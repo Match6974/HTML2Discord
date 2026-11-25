@@ -1,0 +1,22 @@
+name: NEWS parse test
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  parse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node src/parse-news-test.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: news-parse-test
+          path: output/news-parse/
+          retention-days: 3
