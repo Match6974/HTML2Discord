@@ -1,0 +1,152 @@
+{
+  "1": {
+    "Variant-1": {
+      "nameEn": "Full Bullet",
+      "nameJa": "フルバレット"
+    }
+  },
+  "2": {
+    "Variant-1": {
+      "nameEn": "Machine Gun",
+      "nameJa": "マシンガン"
+    },
+    "Variant-2": {
+      "nameEn": "Cluster",
+      "nameJa": "クラスター"
+    }
+  },
+  "3": {
+    "Variant-1": {
+      "nameEn": "Zero Satellites",
+      "nameJa": "ゼロ・サテライツ"
+    }
+  },
+  "4": {
+    "Variant-1": {
+      "nameEn": "Ice Fang Wind Flame",
+      "nameJa": "氷牙風炎"
+    }
+  },
+  "6": {
+    "Variant-1": {
+      "nameEn": "Froppy Hopper",
+      "nameJa": "フロッピホッパー"
+    }
+  },
+  "7": {
+    "Variant-1": {
+      "nameEn": "Lightning",
+      "nameJa": "ライトニング"
+    },
+    "Variant-2": {
+      "nameEn": "Spark",
+      "nameJa": "スパーク"
+    }
+  },
+  "8": {
+    "Variant-1": {
+      "nameEn": "Red Drive",
+      "nameJa": "烈怒弩来武"
+    }
+  },
+  "10": {
+    "Variant-1": {
+      "nameEn": "Electromagnetic Cannon",
+      "nameJa": "電磁投射砲"
+    }
+  },
+  "12": {
+    "Variant-1": {
+      "nameEn": "Gatling",
+      "nameJa": "ガトリング"
+    }
+  },
+  "13": {
+    "Variant-1": {
+      "nameEn": "Flow Runner",
+      "nameJa": "流走"
+    }
+  },
+  "15": {
+    "Variant-1": {
+      "nameEn": "Catastrophe",
+      "nameJa": "カタストロフィ"
+    },
+    "Variant-2": {
+      "nameEn": "Thousand-Hand Break",
+      "nameJa": "千手塵壊"
+    }
+  },
+  "16": {
+    "Variant-1": {
+      "nameEn": "Factor Fusion",
+      "nameJa": "因子複合"
+    }
+  },
+  "17": {
+    "Variant-1": {
+      "nameEn": "Crazy Torch",
+      "nameJa": "狂燈"
+    }
+  },
+  "18": {
+    "Variant-1": {
+      "nameEn": "Sting Dance",
+      "nameJa": "スティングダンス"
+    }
+  },
+  "23": {
+    "Variant-1": {
+      "nameEn": "Flashfire Fist",
+      "nameJa": "赫灼熱拳"
+    }
+  },
+  "24": {
+    "Variant-1": {
+      "nameEn": "Sheer Counter",
+      "nameJa": "シアカウンター"
+    }
+  },
+  "25": {
+    "Variant-1": {
+      "nameEn": "Fairy",
+      "nameJa": "フェアリー"
+    }
+  },
+  "34": {
+    "Variant-1": {
+      "nameEn": "Blighted Precipice",
+      "nameJa": "死穢ノ断崖"
+    }
+  },
+  "37": {
+    "Variant-1": {
+      "nameEn": "Sad Man's Parade",
+      "nameJa": "哀れな行進"
+    }
+  },
+  "43": {
+    "Variant-1": {
+      "nameEn": "Slicing Wind",
+      "nameJa": "風切太刀"
+    }
+  },
+  "46": {
+    "Variant-1": {
+      "nameEn": "Twin Palm Strike",
+      "nameJa": "双大掌"
+    }
+  },
+  "109": {
+    "Variant-1": {
+      "nameEn": "D.J. Board",
+      "nameJa": "D・Jボード"
+    }
+  },
+  "202": {
+    "Variant-1": {
+      "nameEn": "Rising",
+      "nameJa": "ライジング"
+    }
+  }
+}
