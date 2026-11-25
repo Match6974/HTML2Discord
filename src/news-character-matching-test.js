@@ -6,8 +6,9 @@ const dir='output/news-character-matching';
 await mkdir(dir,{recursive:true});
 const master=JSON.parse(await readFile('output/character-master/master.json','utf8'));
 const norm=s=>String(s??'').normalize('NFKC').trim();
+const normCharacter=s=>norm(s).replace(/[・･\s]/gu,'');
 function match(name,style,scope,catalog=master){
- const chars=catalog.filter(c=>norm(c.nameJa)===norm(name));
+ const chars=catalog.filter(c=>normCharacter(c.nameJa)===normCharacter(name));
  if(chars.length!==1)return {images:[],warnings:['Character missing or ambiguous']};
  const c=chars[0];
  if(!style&&scope!=='all')return {images:[],warnings:['Style scope unknown']};
@@ -30,6 +31,11 @@ assert.equal(match('テスト',null,'all',fixture).images.length,2);
 assert.equal(match('テスト',null,'unknown',fixture).images.length,0);
 assert.equal(match('テスト','予定','specified',fixture).images.length,0);
 assert.equal(match('不明',null,'all',fixture).images.length,0);
+const aliasFixture=[{...fixture[0],nameJa:'オール・フォー・ワン'}];
+assert.equal(match('オールフォーワン','オリジナル','specified',aliasFixture).images.length,1);
+assert.equal(match('オール フォー ワン','オリジナル','specified',aliasFixture).images.length,1);
+assert.equal(match('オールフォーワン(青年期)','オリジナル','specified',aliasFixture).images.length,0);
+assert.equal(match('オールフォーワン','オリジナル','specified',[...aliasFixture,{...aliasFixture[0],characterId:2,nameJa:'オールフォーワン'}]).images.length,0);
 const results=[];
 for(const id of ['1573','1552','1485','1566']){
  const {url,html}=await fetchNews('https://mhaur.bn-ent.net/news/?p='+id);
