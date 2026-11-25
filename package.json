@@ -1,0 +1,12 @@
+{
+  "name": "html2discord",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render:test": "node src/render-test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
