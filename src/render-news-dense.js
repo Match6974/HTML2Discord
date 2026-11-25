@@ -62,6 +62,32 @@ try {
  const count=i=>article.characters[i].skills.length;
  while(i<article.characters.length){
   assert.ok(count(i)>0);
+  // Search complete-character row combinations before allowing a split.
+  // Bounded beam search keeps large articles from causing exponential work.
+  if(!rows.length && start===0 && !article.characters[i].sharedKind){
+   let beam=[{rows:[],next:i,gap:Infinity}],best=null;
+   for(let depth=0;depth<8&&beam.length;depth++){
+    const next=[];
+    for(const state of beam){
+     for(let width=1;width<=6&&state.next+width<=article.characters.length;width++){
+      if(article.characters[state.next+width-1].sharedKind)break;
+      const row=Array.from({length:width},(_,j)=>({i:state.next+j,start:0,end:count(state.next+j)}));
+      const trial=[...state.rows,row];
+      const info=await draw(trial);
+      if(!fits(info))continue;
+      const candidate={rows:trial,next:state.next+width,gap:info.footerGap};
+      next.push(candidate);
+      if(!best||candidate.next>best.next||(candidate.next===best.next&&candidate.gap>best.gap))best=candidate;
+     }
+    }
+    next.sort((a,b)=>b.next-a.next||b.gap-a.gap);
+    beam=next.slice(0,12);
+    if(best?.next===article.characters.length)break;
+   }
+   if(best){
+    plans.push({rows:best.rows});i=best.next;start=0;continue;
+   }
+  }
   const candidates=[];
   if(article.characters[i].sharedKind){
    for(let end=count(i);end>start;end--){
