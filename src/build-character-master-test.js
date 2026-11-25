@@ -47,7 +47,9 @@ try{
    if(entry&&!mappingMatches)warnings.push({id,styleId,issue:'Mapping English name mismatch',expected:entry.nameEn,actual:b.name});
    const nameJa=a.name||(styleId==='Variant-0'&&b.name.toLowerCase()==='original'?'オリジナル':mappingMatches?entry.nameJa:null);
    if(!sameImage||!b.name||!nameJa)warnings.push({id,styleId,issue:'Unresolved metadata',sameImage,nameEn:b.name,nameJa});
-   styles.push({styleId,nameJa,nameEn:b.name||null,imageUrl:a.image||null,imagePathMatches:sameImage,ready:!!(nameJa&&name('ja')&&sameImage&&b.name&&(!entry||mappingMatches)),nameJaSource:a.name?'page':nameJa?(mappingMatches?'mapping':'original-rule'):null});
+   const listCards=['ja','en'].flatMap(lang=>lists[lang].filter(c=>{const u=new URL(c.url);return u.pathname==='/character/'+id&&(u.hash==='#'+styleId||(!u.hash&&styleId==='Variant-0'));}));
+   const releaseStatus=listCards.some(c=>/UPCOMING|実装予定|近日公開/i.test(c.text))?'upcoming':listCards.length===2?'listed':'unknown';
+   styles.push({releaseStatus,styleId,nameJa,nameEn:b.name||null,imageUrl:a.image||null,imagePathMatches:sameImage,ready:!!(nameJa&&name('ja')&&sameImage&&b.name&&(!entry||mappingMatches)),nameJaSource:a.name?'page':nameJa?(mappingMatches?'mapping':'original-rule'):null});
   }
   master.push({characterId:Number(id),nameJa:name('ja'),nameEn:name('en'),styles,raw});
   await save('master',master);await save('warnings',warnings);
