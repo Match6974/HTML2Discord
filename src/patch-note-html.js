@@ -85,7 +85,7 @@ const skillCardsHtml = testSkills.map((skill) => {
                 ${esc(segment.label)}
               </span>
             </div>
-            ${segment.raw ? `<div class="raw-text">${esc(segment.raw)}</div>` : ""}
+            ${segment.raw ? `<div class="raw-text" data-hide-arrow="${segment.hideArrow===true}">${esc(segment.raw)}</div>` : ""}
             ${segment.mode === "text" ? "" : `<div class="value-row">
               <span class="value-before">${esc(beforeText)}</span>
               <span class="value-arrow" style="color: ${color}">→</span>
