@@ -97,7 +97,7 @@ try {
   const candidates=[];
   if(article.characters[i].sharedKind){
    for(let end=count(i);end>start;end--){
-    for(let cols=1;cols<=Math.min(article.characters[i].sharedKind==='general'?1:3,end-start);cols++){
+    for(let cols=1;cols<=Math.min(article.characters[i].sharedKind==='general'?1:6,end-start);cols++){
      const row=[{i,start,end,targetCols:cols}];
      const info=await draw([...rows,row]);
      if(fits(info))candidates.push({row,complete:end===count(i)?1:0,cards:end-start,gap:info.footerGap});
