@@ -1,5 +1,6 @@
 import {chromium} from 'playwright';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,writeFile,readFile} from 'node:fs/promises';
+const mapping=JSON.parse(await readFile(new URL('../data/style-name-mapping.json',import.meta.url),'utf8'));
 const dir='output/character-master';
 await mkdir(dir,{recursive:true});
 const browser=await chromium.launch();
@@ -41,9 +42,12 @@ try{
    if(!styleId||j.length!==1||e.length!==1){warnings.push({id,styleId,issue:'Missing or ambiguous style ID'});continue;}
    const a=j[0],b=e[0];
    const sameImage=!!a.image&&!!b.image&&new URL(a.image).pathname===new URL(b.image).pathname;
-   const nameJa=a.name||(styleId==='Variant-0'&&b.name.toLowerCase()==='original'?'オリジナル':null);
+   const entry=mapping[id]?.[styleId];
+   const mappingMatches=entry?.nameEn===b.name;
+   if(entry&&!mappingMatches)warnings.push({id,styleId,issue:'Mapping English name mismatch',expected:entry.nameEn,actual:b.name});
+   const nameJa=a.name||(styleId==='Variant-0'&&b.name.toLowerCase()==='original'?'オリジナル':mappingMatches?entry.nameJa:null);
    if(!sameImage||!b.name||!nameJa)warnings.push({id,styleId,issue:'Unresolved metadata',sameImage,nameEn:b.name,nameJa});
-   styles.push({styleId,nameJa,nameEn:b.name||null,imageUrl:a.image||null,imagePathMatches:sameImage,ready:!!(nameJa&&name('ja')&&sameImage&&b.name),nameJaSource:a.name?'page':nameJa?'original-rule':null});
+   styles.push({styleId,nameJa,nameEn:b.name||null,imageUrl:a.image||null,imagePathMatches:sameImage,ready:!!(nameJa&&name('ja')&&sameImage&&b.name&&(!entry||mappingMatches)),nameJaSource:a.name?'page':nameJa?(mappingMatches?'mapping':'original-rule'):null});
   }
   master.push({characterId:Number(id),nameJa:name('ja'),nameEn:name('en'),styles,raw});
   await save('master',master);await save('warnings',warnings);
