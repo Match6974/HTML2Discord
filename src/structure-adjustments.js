@@ -11,7 +11,7 @@ export function parseScope(raw) {
 }
 const labels = {buff:'強化',nerf:'弱体化',unknown:'判定保留','combo-up':'コンボしやすさUP','combo-down':'コンボしやすさDown'};
 function segment(a, scope, evidence) {
-  return {scope, before:a.before, after:a.after, unit:a.metric==='弾数'?(/\d\s*[%％]/.test(a.raw)?'%':'発'):a.metric==='リロード時間'?'秒':null, direction:a.direction,effect:a.effect,color:a.color,label:labels[a.effect], mode:a.before!==null&&a.after!==null?'before-after':a.after!==null?'after-only':'text', text:a.raw,evidence};
+  return {scope, hideArrow:a.hideArrow===true, knockbackTarget:a.knockbackTarget??null, before:a.before, after:a.after, unit:a.metric==='弾数'?(/\d\s*[%％]/.test(a.raw)?'%':'発'):a.metric==='リロード時間'?'秒':null, direction:a.direction,effect:a.effect,color:a.color,label:labels[a.effect], mode:a.before!==null&&a.after!==null?'before-after':a.after!==null?'after-only':'text', text:a.raw,evidence};
 }
 export function structureAdjustments(parsed) {
   if (!['ok','no-target'].includes(parsed.status)) throw new Error('Cannot structure incomplete article');
