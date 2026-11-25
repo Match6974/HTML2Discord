@@ -36,6 +36,19 @@ try {
  await writeFile(dir+'/date-candidates.json',JSON.stringify(date,null,2));
  assert.equal(date.dates.length,1,'Publication date missing or ambiguous');
  const article={date:date.dates[0],category:'バトルスタイル調整',characters:data.characters.map(c=>({...c,skills:c.adjustments.map(a=>({title:a.skill??a.metric??'調整内容',display:{segments:a.display.segments.map(s=>({...s,scope:s.scope.label??'',scopeType:s.scope.type==='remainder'?'unresolved':s.scope.type,unit:s.unit??'',raw:a.raw,displayColor:colors[s.color]??null,afterColor:colors[s.color]??null}))}}))}))};
+ // Shared adjustments use one heading per group and one card per target.
+ const sharedCharacters=(data.shared??[]).map(g=>({
+   name:'共通バランス調整',style:g.title,
+   skills:(g.kind==='general'?g.adjustments.map(a=>({title:g.title,raw:a.raw})):g.targets.map(t=>({title:t.name+(t.style?'（'+t.style+'）':t.styleScope==='all'?'（全バトルスタイル共通）':'（スタイル指定なし）'),raw:t.skills.join(' ／ ')}))).map(a=>({title:a.title,display:{segments:[{scope:'',scopeType:'unspecified',label:'',mode:'text',raw:a.raw,unit:'',before:null,after:null}]}}))
+ }));
+ for(let i=0;i<data.characters.length;i++){
+   const c=data.characters[i];
+   if(!c.style){
+     article.characters[i].style=c.adjustments.every(a=>a.styleScope==='all')?'全バトルスタイル共通':'スタイル指定なし';
+     if(!c.adjustments.every(a=>a.styleScope==='all')) article.characters[i].skills.forEach((s,j)=>{s.title+='（'+(c.adjustments[j].styleScope==='all'?'全バトルスタイル共通':'適用範囲不明')+'）';});
+   }
+ }
+ article.characters.unshift(...sharedCharacters);
  const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
  const plans=[];
  for(let i=0;i<article.characters.length;i++){
@@ -72,8 +85,8 @@ try {
    const png=await page.screenshot({path:dir+'/page-'+String(n).padStart(2,'0')+'.png'});
    assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);
  }
- assert.equal(cards,data.characters.reduce((n,c)=>n+c.adjustments.length,0));
- assert.equal(segments,data.characters.flatMap(c=>c.adjustments).reduce((n,a)=>n+a.display.segments.length,0));
+ assert.equal(cards,article.characters.reduce((n,c)=>n+c.skills.length,0));
+ assert.equal(segments,article.characters.flatMap(c=>c.skills).reduce((n,a)=>n+a.display.segments.length,0));
  await writeFile(dir+'/result.json',JSON.stringify({url,status:'ok',date:article.date,total,cards,segments},null,2));
  console.log({total,cards,segments});
 } catch(e){await writeFile(dir+'/error.txt',String(e.stack??e));throw e;} finally {await browser?.close();}
