@@ -58,37 +58,42 @@ try {
  const draw=await createAdaptiveRenderer(page,article);
  // A row contains consecutive character blocks. Prefer whole characters,
  // then use remaining space for a prefix of the next character if necessary.
- async function planPages(useSearch){
+ async function planPages(){
  const plans=[];let rows=[],i=0,start=0;
  const count=i=>article.characters[i].skills.length;
  while(i<article.characters.length){
   assert.ok(count(i)>0);
-  // Search complete-character row combinations before allowing a split.
-  // Bounded beam search keeps large articles from causing exponential work.
-  if(useSearch && !rows.length && start===0 && !article.characters[i].sharedKind){
-   let beam=[{rows:[],next:i,gap:Infinity}],best=null;
-   for(let depth=0;depth<8&&beam.length;depth++){
-    const next=[];
-    for(const state of beam){
-     for(let width=1;width<=6&&state.next+width<=article.characters.length;width++){
-      if(article.characters[state.next+width-1].sharedKind)break;
-      const row=Array.from({length:width},(_,j)=>({i:state.next+j,start:0,end:count(state.next+j)}));
-      const trial=[...state.rows,row];
-      const info=await draw(trial);
-      if(!fits(info))continue;
-      const candidate={rows:trial,next:state.next+width,gap:info.footerGap};
-      next.push(candidate);
-      if(!best||candidate.next>best.next||(candidate.next===best.next&&candidate.gap>best.gap))best=candidate;
+  // Fill each column top-to-bottom, preserving contiguous source order.
+  if(!rows.length && !article.characters[i].sharedKind){
+   let best=null;
+   for(let width=1;width<=6;width++){
+    const columns=[];let next=i,offset=start;
+    for(let col=0;col<width&&next<article.characters.length&&!article.characters[next].sharedKind;col++){
+     const items=[];
+     while(next<article.characters.length&&!article.characters[next].sharedKind){
+      const item={i:next,start:offset,end:count(next)};
+      if(fits(await draw([...columns,[...items,item]],1,1,width))){
+       items.push(item);next++;offset=0;continue;
+      }
+      if(!items.length){
+       for(let end=item.end-1;end>offset;end--){
+        const partial={...item,end};
+        if(fits(await draw([...columns,[partial]],1,1,width))){items.push(partial);offset=end;break;}
+       }
+      }
+      break;
      }
+     if(!items.length)break;
+     columns.push(items);
     }
-    next.sort((a,b)=>b.next-a.next||b.gap-a.gap);
-    beam=next.slice(0,12);
-    if(best?.next===article.characters.length)break;
+    if(!columns.length)continue;
+    const splits=columns.flat().filter(x=>x.end<count(x.i)).length;
+    const candidate={rows:columns,columnCount:width,next,offset,splits};
+    if(!best||next>best.next||(next===best.next&&(offset>best.offset||(offset===best.offset&&splits<best.splits))))best=candidate;
    }
-   if(best){
-    plans.push({rows:best.rows});i=best.next;start=0;continue;
-   }
+   if(best){plans.push({rows:best.rows,columnCount:best.columnCount});i=best.next;start=best.offset;continue;}
   }
+  if(rows.length&&!article.characters[i].sharedKind){plans.push({rows});rows=[];continue;}
   const candidates=[];
   if(article.characters[i].sharedKind){
    for(let end=count(i);end>start;end--){
@@ -127,12 +132,7 @@ try {
  if(rows.length)plans.push({rows});
  return plans;
  }
- const greedy=await planPages(false);
- const searched=await planPages(true);
- const score=p=>[p.filter(x=>x.fallback).length,p.length,p.reduce((n,x)=>n+(x.rows??[]).flat().filter(y=>y.start>0).length,0)];
- const compare=(a,b)=>{const x=score(a),y=score(b);return x[0]-y[0]||x[1]-y[1]||x[2]-y[2];};
- const plans=compare(searched,greedy)<0?searched:greedy;
- await writeFile(dir+'/planning-results.json',JSON.stringify({greedy:score(greedy),searched:score(searched),selected:plans===searched?'search':'greedy',scoreFields:['fallbackPages','pages','continuations']},null,2));
+ const plans=await planPages();
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
@@ -152,10 +152,10 @@ try {
     const png=await fallback.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);
    }finally{await fallback.close();}
   }else{
-   info=await draw(plan.rows,k+1,plans.length);assert.ok(fits(info),JSON.stringify(info));
+   info=await draw(plan.rows,k+1,plans.length,plan.columnCount??0);assert.ok(fits(info),JSON.stringify(info));
    const png=await page.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);
   }
-  ids.push(...info.ids);segments+=info.segments;report.push({page:k+1,...plan,columnCounts:plan.rows?.map(r=>r[0].targetCols??r.length)??[1],...info});
+  ids.push(...info.ids);segments+=info.segments;report.push({page:k+1,...plan,columnCounts:plan.columnCount?[plan.columnCount]:plan.rows?.map(r=>r[0].targetCols??r.length)??[1],...info});
   await writeFile(dir+'/layout-results.json',JSON.stringify(report,null,2));
  }
  assert.deepEqual(ids,article.characters.flatMap((c,i)=>c.skills.map((_,j)=>i+':'+j)));
