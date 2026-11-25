@@ -9,7 +9,7 @@ export function parseScope(raw) {
   if (/低レベル/.test(t)) return { type:'qualitative', label:'低レベル時' };
   return { type:'unspecified', label:null };
 }
-const labels = {buff:'強化',nerf:'弱体化',unknown:'判定保留'};
+const labels = {buff:'強化',nerf:'弱体化',unknown:'判定保留','combo-up':'コンボしやすさUP','combo-down':'コンボしやすさDown'};
 function segment(a, scope, evidence) {
   return {scope, before:a.before, after:a.after, unit:a.metric==='弾数'?(/\d\s*[%％]/.test(a.raw)?'%':'発'):a.metric==='リロード時間'?'秒':null, direction:a.direction,effect:a.effect,color:a.color,label:labels[a.effect], mode:a.before!==null&&a.after!==null?'before-after':a.after!==null?'after-only':'text', text:a.raw,evidence};
 }
