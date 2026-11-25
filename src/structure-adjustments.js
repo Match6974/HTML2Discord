@@ -11,7 +11,7 @@ export function parseScope(raw) {
 }
 const labels = {buff:'強化',nerf:'弱体化',unknown:'判定保留'};
 function segment(a, scope, evidence) {
-  return {scope, before:a.before, after:a.after, unit:a.metric==='弾数'?'発':a.metric==='リロード時間'?'秒':null, direction:a.direction,effect:a.effect,color:a.color,label:labels[a.effect], mode:a.before!==null&&a.after!==null?'before-after':a.after!==null?'after-only':'text', text:a.raw,evidence};
+  return {scope, before:a.before, after:a.after, unit:a.metric==='弾数'?(/\d\s*[%％]/.test(a.raw)?'%':'発'):a.metric==='リロード時間'?'秒':null, direction:a.direction,effect:a.effect,color:a.color,label:labels[a.effect], mode:a.before!==null&&a.after!==null?'before-after':a.after!==null?'after-only':'text', text:a.raw,evidence};
 }
 export function structureAdjustments(parsed) {
   if (!['ok','no-target'].includes(parsed.status)) throw new Error('Cannot structure incomplete article');
@@ -19,6 +19,10 @@ export function structureAdjustments(parsed) {
     const scope=parseScope(a.raw);
     const evidence={source:'本文',line:a.line,text:a.raw};
     let segments=[segment(a,scope,evidence)];
+        // User-confirmed historical behavior, limited to this exact adjustment.
+        if (c.name==='物間寧人' && c.style==='オリジナル' && a.skill?.includes('コピー・スティール') && a.raw.normalize('NFKC')==='弾数が100%でないと使用できないように変更') {
+          segments=[segment({...a,before:'1～100',after:100,direction:'unknown',effect:'nerf',color:'red'},scope,{source:'ユーザー確認',text:'変更前は1～100%で使用可能、変更後は100%のみ',body:evidence})];
+        }
     // Narrow evidence rule: explicit shared beta/gamma low-level ammo statement.
     const reason=c.reason.join('');
     const match=reason.normalize('NFKC').match(/低レベル時に[“”"「」]?個性[“”"「」]?技β[、,]γの弾数が(\d+)発だった/);
