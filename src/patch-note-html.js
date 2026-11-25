@@ -1,5 +1,5 @@
-export function buildPatchNoteHtml({ testCardCount = 1, requestedPageFromWorker = 1 } = {}) {
-const patchNoteData = {
+export function buildPatchNoteHtml({ testCardCount = 1, requestedPageFromWorker = 1, article = null, characterIndex = 0 } = {}) {
+const patchNoteData = article ?? {
       articleId: 1573,
       date: "2026.11.11",
       category: "バトルスタイル調整",
@@ -48,8 +48,9 @@ const patchNoteData = {
         },
       ],
     };
-    const character = patchNoteData.characters[0];
-const testSkills = Array.from(
+    const character = patchNoteData.characters[characterIndex];
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const testSkills = article ? character.skills : Array.from(
       { length: testCardCount },
       (_, index) => character.skills.map((skill) => ({
         ...skill,
@@ -79,25 +80,26 @@ const skillCardsHtml = testSkills.map((skill) => {
         return `
           <div class="segment">
             <div class="segment-header">
-              <span class="segment-scope">${segment.scope}</span>
+              <span class="segment-scope">${esc(segment.scope)}</span>
               <span class="segment-label" style="color: ${color}">
-                ${segment.label}
+                ${esc(segment.label)}
               </span>
             </div>
-            <div class="value-row">
-              <span class="value-before">${beforeText}</span>
+            ${segment.raw ? `<div class="raw-text">${esc(segment.raw)}</div>` : ""}
+            ${segment.mode === "text" ? "" : `<div class="value-row">
+              <span class="value-before">${esc(beforeText)}</span>
               <span class="value-arrow" style="color: ${color}">→</span>
               <span class="value-after" style="color: ${segment.afterColor || "#111111"}">
-                ${afterText}
+                ${esc(afterText)}
               </span>
-            </div>
+            </div>`}
             ${note ? `<div class="note">${note}</div>` : ""}
           </div>
         `;
       }).join("");
       return `
         <section class="skill-card">
-          <div class="skill-title">${skill.title}</div>
+          <div class="skill-title">${esc(skill.title)}</div>
           ${segmentsHtml}
         </section>
       `;
@@ -189,6 +191,7 @@ const html = `
       border-radius: 6px;
       padding: 28px;
     }
+    .raw-text { font-size: 30px; line-height: 1.35; overflow-wrap: anywhere; margin-top: 12px; }
     .skill-title {
       font-size: 38px;
       font-weight: bold;
@@ -311,21 +314,20 @@ const html = `
         <div class="header-title">
           <h1>PATCH NOTES</h1>
           <div class="subtitle">
-            ${patchNoteData.category}｜${patchNoteData.date}
+            ${esc(patchNoteData.category)}｜${esc(patchNoteData.date)}
           </div>
         </div>
         <div class="page-number">01 / 01</div>
       </header>
       <section class="character-header">
-        <div class="character-name">${character.name}</div>
-        <div class="battle-style">${character.style}</div>
+        <div class="character-name">${esc(character.name)}</div>
+        <div class="battle-style">${esc(character.style)}</div>
       </section>
     ${skillCardsHtml}
-      <section class="reason-card">
+      <section class="reason-card" ${article ? 'style="display:none"' : ""}>
         <div class="reason-title">調整意図</div>
         <div class="reason-text">
-          日本語の長文が正しく表示されるか確認するためのテスト文章です。
-          今後は公式記事から取得した調整意図を、省略せずに表示します。
+          ${article ? "※調整内容のみ掲載" : "日本語の長文が正しく表示されるか確認するためのテスト文章です。今後は公式記事から取得した調整意図を、省略せずに表示します。"}
         </div>
       </section>
     </div> <!-- .page をここで閉じる -->
