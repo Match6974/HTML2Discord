@@ -5,13 +5,15 @@ export async function createAdaptiveRenderer(page,article){
  await page.setContent(templates[0].replace(/<script>[\s\S]*?<\/script>/,''));
  await page.addStyleTag({content:css});
  await page.evaluate(()=>document.fonts.ready);
- async function draw(rows,n=1,total=1){
-  return page.evaluate(({rows,templates,n,total,shared,sharedKeys})=>{
+ async function draw(rows,n=1,total=1,columnCount=0){
+  return page.evaluate(({rows,templates,n,total,shared,sharedKeys,columnCount})=>{
    const root=document.querySelector('.page');
    root.querySelectorAll('.character-header,.skill-card,.reason-card,.rows').forEach(e=>e.remove());
    const stack=document.createElement('div');stack.className='rows';
+   if(columnCount){stack.style.display='grid';stack.style.gridTemplateColumns='repeat('+columnCount+',minmax(0,1fr))';stack.style.alignItems='start';}
    for(const items of rows){
    const grid=document.createElement('div');grid.className='columns';grid.style.setProperty('--cols',items.length);grid.dataset.cols=items.length;
+   if(columnCount){grid.style.setProperty('--cols',1);grid.dataset.cols=columnCount;grid.style.alignContent='start';}
    for(const item of items){
     const doc=new DOMParser().parseFromString(templates[item.i],'text/html');
     const col=document.createElement('section');col.className='character-column';
@@ -44,7 +46,7 @@ export async function createAdaptiveRenderer(page,article){
    const cols=[...stack.querySelectorAll('.character-column')], rects=cols.map(e=>e.getBoundingClientRect());
    const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>e.className);
    return {footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
-  },{rows,templates,n,total,shared:article.characters.map(c=>c.sharedKind??null),sharedKeys:article.characters.map(c=>c.skills.map(s=>s.groupable??false))});
+  },{rows,templates,n,total,columnCount,shared:article.characters.map(c=>c.sharedKind??null),sharedKeys:article.characters.map(c=>c.skills.map(s=>s.groupable??false))});
  }
 
  return draw;
