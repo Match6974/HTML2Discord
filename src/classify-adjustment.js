@@ -1,8 +1,15 @@
-export function classifyAdjustment(raw) {
+export function classifyAdjustment(raw, context = {}) {
   const text = raw.normalize('NFKC');
+  if (/吹っ飛び(?:にくく|やすく)/.test(text)) {
+    const self=/(?:自分|自身|使用者|自キャラ)(?:が|は|の|を).*吹っ飛び/.test(text);
+    const opponent=/(?:相手|敵|対象)(?:が|は|の|を).*吹っ飛び/.test(text);
+    const carry=/おんぶ/.test(String(context.skill??'')+' '+text);
+    const target=self&&opponent?'unknown':self?'self':opponent?'opponent':carry?'self':'unknown';
+    const up=/吹っ飛びにくく/.test(text),down=/吹っ飛びやすく/.test(text);
+    const effect=target==='opponent'&&up!==down?(up?'combo-up':'combo-down'):'unknown';
+    return {metric:null,direction:'unknown',effect,color:effect==='combo-up'?'yellow':effect==='combo-down'?'orange':null,before:null,after:null,knockbackTarget:target,hideArrow:target==='self'};
+  }
   const rules=[
-    [/吹っ飛びにくく/, 'combo-up','yellow','unknown'],
-    [/吹っ飛びやすく/, 'combo-down','orange','unknown'],
     [/事前入力.*受け付けない/, 'nerf','red','unknown'],
     [/事前入力.*受け付ける/, 'buff','green','unknown'],
     [/ひるまない/, 'nerf','red','unknown'],
