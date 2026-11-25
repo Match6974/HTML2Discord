@@ -1,0 +1,78 @@
+name: NEWS dense regression test
+on:
+  workflow_dispatch:
+    inputs:
+      news_urls:
+        description: Official NEWS URLs separated by spaces, commas or newlines
+        required: true
+        type: string
+        default: 'https://mhaur.bn-ent.net/news/?p=1573, https://mhaur.bn-ent.net/news/?p=1563, https://mhaur.bn-ent.net/news/?p=1552, https://mhaur.bn-ent.net/news/?p=1485, https://mhaur.bn-ent.net/news/?p=1566, https://mhaur.bn-ent.net/news/?p=1528'
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.urls.outputs.matrix }}
+    steps:
+      - id: urls
+        env:
+          NEWS_URLS: ${{ inputs.news_urls }}
+        run: |
+          node --input-type=module <<'JS'
+          import {appendFileSync} from 'node:fs';
+          const urls = process.env.NEWS_URLS.trim().split(/[\s,]+/).filter(Boolean);
+          const entries = new Map();
+          for (const raw of urls) {
+            const u = new URL(raw);
+            const id = u.searchParams.get('p');
+            if (u.origin !== 'https://mhaur.bn-ent.net' || u.pathname !== '/news/' || !/^\d+$/.test(id ?? '') || u.username || u.password) throw new Error('Invalid official NEWS URL: '+raw);
+            entries.set(id,{id,url:'https://mhaur.bn-ent.net/news/?p='+id});
+          }
+          if (!entries.size || entries.size > 50) throw new Error('Specify 1 to 50 distinct articles');
+          appendFileSync(process.env.GITHUB_OUTPUT,'matrix='+JSON.stringify({include:[...entries.values()]})+'\n');
+          JS
+  validate:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    name: NEWS p=${{ matrix.id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Baseline render
+        id: baseline
+        continue-on-error: true
+        run: node src/render-news-general.js
+        env:
+          NEWS_URL: ${{ matrix.url }}
+      - name: Dense render
+        id: dense
+        continue-on-error: true
+        run: node src/render-news-dense.js
+        env:
+          NEWS_URL: ${{ matrix.url }}
+      - name: Compare results
+        if: always()
+        env:
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          DENSE_OUTCOME: ${{ steps.dense.outcome }}
+        run: node src/compare-dense-regression.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dense-regression-p${{ matrix.id }}-run${{ github.run_number }}-attempt${{ github.run_attempt }}
+          path: |
+            output/news-general/
+            output/news-dense/
+            output/dense-regression/
+          retention-days: 3
