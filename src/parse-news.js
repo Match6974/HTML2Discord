@@ -89,7 +89,22 @@ export function parseLines(lines) {
     }
     if(!active){individual.push(line);continue;}
     const startGeneral=/^【格闘攻撃】$/.test(t);
-    const startTargets=/^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
+    // Structural fallback: a separated prose heading followed by at least two
+    // character headers with skill-only child rows.
+    const isHeader=x=>/^【[^】]+】$/.test(x);
+    const isSkill=x=>/^└\s*[“”"「『]?個性[“”"」』]?技.*[「『]/.test(x);
+    let cursor=index+1, targetCount=0;
+    if(!line.heading && !/^[■・●•└【]/.test(t) && (line.blankBefore>=2 || line.blockGap>=2 || index===1)){
+      while(cursor<lines.length && isHeader(lines[cursor].text.trim().normalize('NFKC'))){
+        cursor++;
+        let count=0;
+        while(cursor<lines.length && isSkill(lines[cursor].text.trim().normalize('NFKC'))){cursor++;count++;}
+        if(!count)break;
+        targetCount++;
+      }
+    }
+    const structuralTargets=targetCount>=2 && /(?:変更|調整|追加|修正)/.test(t);
+    const startTargets=structuralTargets || /^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
     const startActions=/^一部の特殊アクションにて.*変更$/.test(t);
     if(startGeneral||startTargets||startActions){
       finish();
@@ -138,11 +153,17 @@ export async function parseNews(html) {
       if (roots.length !== 1) throw new Error('Expected one articleInner');
       const root = roots[0];
       const out = [];
+      let blanks=0, blockGap=0;
       for (const el of root.children) {
         const copy = el.cloneNode(true);
         copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
         const heading = /^H[1-6]$/.test(el.tagName);
-        for (const text of copy.textContent.split('\n')) if (text.trim()) out.push({ number: out.length + 1, text, heading });
+        if(!copy.textContent.trim()){blockGap++;blanks+=copy.textContent.split('\n').length;continue;}
+        for (const text of copy.textContent.split('\n')) {
+          if(!text.trim()){blanks++;continue;}
+          out.push({number:out.length+1,text,heading,blankBefore:blanks,blockGap});
+          blanks=0;blockGap=0;
+        }
       }
       return out;
     });
