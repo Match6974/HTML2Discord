@@ -4,7 +4,7 @@ import { classifyAdjustment } from './classify-adjustment.js';
 const aliases = new Map([['空中格闘','空中格闘攻撃'],['空格','空中格闘攻撃'],['地上格闘','地上格闘攻撃'],['通常格闘','地上格闘攻撃']]);
 const canonical = title => aliases.get(title) ?? title;
 const styleScope = (character, title) => character.style ? 'specified' : /^(?:特殊アクション|空中格闘攻撃|地上格闘攻撃|格闘攻撃)/.test(title ?? '') ? 'all' : 'unknown';
-export function parseLines(lines) {
+function parseIndividualLines(lines) {
   const result = { status: 'no-target', characters: [], unparsed: [], outside: [], lines };
   let target = false, character = null, skill = null, reason = false;
   const warn = (line, why) => result.unparsed.push({ ...line, why });
@@ -60,6 +60,61 @@ export function parseLines(lines) {
   for (const c of result.characters) if (!c.adjustments.length) result.unparsed.push({ text: c.rawHeader, number: c.line, why: 'empty character' });
   if (result.status === 'ok' && !result.characters.length) result.unparsed.push({ why: 'no characters in target section' });
   if (result.unparsed.length) result.status = 'incomplete';
+  return result;
+}
+
+// Extract shared blocks before individual parsing. Preserve every original line.
+export function parseLines(lines) {
+  const individual=[], shared=[], warnings=[];
+  let active=false, group=null, target=null, reason=false;
+  const finish=()=>{
+    if(group){
+      if(group.kind==='targets' && (!group.targets.length || group.targets.some(t=>!t.skills.length))) warnings.push({number:group.line,why:'shared adjustment without targets'});
+      if(group.kind==='general' && !group.adjustments.length) warnings.push({number:group.line,why:'empty shared adjustment'});
+      shared.push(group);
+    }
+    group=null;target=null;reason=false;
+  };
+  for(const line of lines){
+    const t=line.text.trim().normalize('NFKC');
+    if(line.heading || /^■/.test(t)){
+      finish();active=/^■?\s*バトルスタイル調整$/.test(t);individual.push(line);continue;
+    }
+    if(!active){individual.push(line);continue;}
+    const startGeneral=/^【格闘攻撃】$/.test(t);
+    const startTargets=/^・(?:下記|以下)の.*個性.*技.*(?:調整|変更)$/.test(t);
+    const startActions=/^一部の特殊アクションにて.*変更$/.test(t);
+    if(startGeneral||startTargets||startActions){
+      finish();
+      group={kind:startGeneral?'general':'targets',title:startGeneral?'格闘攻撃':line.text.trim().replace(/^・/,''),
+        line:line.number,targets:[],adjustments:[],reason:[],sourceLines:[line]};
+      if(startActions)group.actionTargets=true;
+      continue;
+    }
+    if(!group){individual.push(line);continue;}
+    const header=t.match(/^【(.+?)\(([^()]*)\)】$/) ?? t.match(/^【([^】]+)】$/);
+    if(header && (reason||group.kind==='general'||group.actionTargets)){finish();individual.push(line);continue;}
+    group.sourceLines.push(line);
+    if(/^[<〈《]?調整意図[>〉》]?$/.test(t)){reason=true;continue;}
+    if(reason){
+      if(/^[・└]/.test(t))warnings.push({...line,why:'unexpected shared reason bullet'});
+      group.reason.push(line.text.trim());continue;
+    }
+    if(group.kind==='general' && /^・/.test(t)){group.adjustments.push({line:line.number,raw:line.text.trim().slice(1)});continue;}
+    if(header && group.kind==='targets'){target={name:header[1],style:header[2]??null,skills:[]};group.targets.push(target);continue;}
+    if(group.actionTargets){
+      const m=line.text.trim().match(/^・([^「]+)「(.+)」$/);
+      if(m){group.targets.push({name:m[1],style:null,styleScope:'all',skills:[m[2]]});continue;}
+    }
+    if(target && /^└/.test(t)){target.skills.push(line.text.trim().replace(/^└\s*/,''));continue;}
+    warnings.push({...line,why:'unknown shared adjustment format'});
+  }
+  finish();
+  const result=parseIndividualLines(individual);
+  if(shared.length && !result.characters.length)result.unparsed=result.unparsed.filter(x=>x.why!=='no characters in target section');
+  result.lines=lines;result.shared=shared;result.unparsed.push(...warnings);
+  if(result.unparsed.length)result.status='incomplete';
+  else if(shared.length)result.status='ok';
   return result;
 }
 
