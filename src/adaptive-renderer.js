@@ -1,0 +1,38 @@
+import {buildPatchNoteHtml} from './patch-note-html.js';
+export async function createAdaptiveRenderer(page,article){
+ const templates=article.characters.map((_,i)=>buildPatchNoteHtml({article,characterIndex:i}));
+ const css='.rows{display:flex;flex-direction:column;gap:24px;flex:none}.columns{flex:none}.columns[data-cols="1"] .character-name{font-size:52px}.columns[data-cols="3"] .character-name{font-size:38px}.columns[data-cols="3"] .value-before,.columns[data-cols="3"] .value-after{font-size:40px}.columns{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:24px;align-items:start}.character-column{display:flex;flex-direction:column;gap:16px;min-width:0}.character-column .character-header{padding:16px 20px}.character-column .character-name{font-size:42px;overflow-wrap:anywhere}.character-column .battle-style{overflow-wrap:anywhere}.character-column .skill-card{padding:18px;min-width:0}.character-column .skill-title{font-size:32px;overflow-wrap:anywhere}.character-column .segment-header{margin-top:8px;flex-wrap:wrap;gap:12px}.character-column .raw-text{font-size:30px;white-space:pre-line}.character-column .value-row{flex-wrap:wrap;gap:16px}.character-column .value-before,.character-column .value-after{font-size:48px;max-width:100%;overflow-wrap:anywhere}.character-column .value-arrow{font-size:40px}';
+ await page.setContent(templates[0].replace(/<script>[\s\S]*?<\/script>/,''));
+ await page.addStyleTag({content:css});
+ await page.evaluate(()=>document.fonts.ready);
+ async function draw(rows,n=1,total=1){
+  return page.evaluate(({rows,templates,n,total})=>{
+   const root=document.querySelector('.page');
+   root.querySelectorAll('.character-header,.skill-card,.reason-card,.rows').forEach(e=>e.remove());
+   const stack=document.createElement('div');stack.className='rows';
+   for(const items of rows){
+   const grid=document.createElement('div');grid.className='columns';grid.style.setProperty('--cols',items.length);grid.dataset.cols=items.length;
+   for(const item of items){
+    const doc=new DOMParser().parseFromString(templates[item.i],'text/html');
+    const col=document.createElement('section');col.className='character-column';
+    col.append(document.importNode(doc.querySelector('.character-header'),true));
+    if(item.start>0)col.querySelector('.battle-style').append('（続き）');
+    const cards=[...doc.querySelectorAll('.skill-card')];
+    for(let j=item.start;j<item.end;j++){const card=document.importNode(cards[j],true);card.dataset.cardId=item.i+':'+j;col.append(card);}
+    grid.append(col);
+   }
+   stack.append(grid);
+   }
+   root.append(stack);
+   const number=String(n).padStart(2,'0')+' / '+String(total).padStart(2,'0');
+   document.querySelector('.page-number').textContent=number;document.querySelector('.footer-page').textContent=number;
+   const footer=document.querySelector('footer').getBoundingClientRect();
+   const cols=[...stack.querySelectorAll('.character-column')], rects=cols.map(e=>e.getBoundingClientRect());
+   const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>e.className);
+   return {footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
+  },{rows,templates,n,total});
+ }
+
+ return draw;
+}
+export const fits=r=>r.footerGap>=24&&r.right<=1872.01&&!r.overflow.length;
