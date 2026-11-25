@@ -72,7 +72,7 @@ try {
     }
     if(candidates.length)break;
    }
-  }else for(let width=1;width<=3&&i+width<=article.characters.length;width++){
+  }else for(let width=1;width<=6&&i+width<=article.characters.length;width++){
    if(article.characters[i+width-1].sharedKind)break;
    const row=Array.from({length:width},(_,j)=>({i:i+j,start:j===0?start:0,end:count(i+j)}));
    if(fits(await draw([...rows,row])))candidates.push({row,complete:width,cards:row.reduce((n,x)=>n+x.end-x.start,0)});
