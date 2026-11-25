@@ -1,0 +1,22 @@
+name: NEWS structure test
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  structure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node src/structure-news-test.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: news-structure-test
+          path: output/news-structure/
+          retention-days: 3
