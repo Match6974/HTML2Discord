@@ -1,0 +1,52 @@
+import {buildPatchNoteHtml} from './patch-note-html.js';
+export async function createAdaptiveRenderer(page,article){
+ const templates=article.characters.map((_,i)=>buildPatchNoteHtml({article,characterIndex:i}));
+ const css='.character-column:not(.shared-block) .skill-card{padding:8px 12px}.character-column:not(.shared-block) .skill-card.group-continuation{margin-top:-16px;border-top:0;border-radius:0 0 6px 6px}.character-column:not(.shared-block) .skill-title{font-size:26px;color:#075985}.character-column:not(.shared-block) .segment{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:start}.character-column:not(.shared-block) .segment-header{display:contents}.character-column:not(.shared-block) .segment-scope{grid-column:1/-1;font-size:20px}.character-column:not(.shared-block) .segment-scope:empty{display:none}.character-column:not(.shared-block) .segment-label{grid-column:2;grid-row:2;font-size:22px;white-space:nowrap}.character-column:not(.shared-block) .raw-text{grid-column:1;grid-row:2;margin:0;font-size:24px}.character-column:not(.shared-block) .value-row,.character-column:not(.shared-block) .note{grid-column:1/-1;margin-top:4px}.character-column:not(.shared-block) .segment+.segment{margin-top:8px;padding-top:8px}.shared-block{display:flex;flex-direction:column;gap:16px;min-width:0;grid-column:1/-1}.shared-targets{display:grid;grid-template-columns:repeat(var(--targets),minmax(0,1fr));gap:24px;align-items:start}.shared-targets .skill-card{min-width:0;padding:18px}.shared-targets .skill-title{font-size:32px;overflow-wrap:anywhere}.shared-targets .raw-text{font-size:30px;white-space:pre-line}.shared-block .battle-style{white-space:normal;overflow-wrap:anywhere}.rows{display:flex;flex-direction:column;gap:24px;flex:none}.columns{flex:none}.columns[data-cols="1"] .character-name{font-size:52px}.columns[data-cols="3"] .character-name{font-size:38px}.columns[data-cols="3"] .value-before,.columns[data-cols="3"] .value-after{font-size:40px}.columns{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:24px;align-items:start}.character-column{display:flex;flex-direction:column;gap:16px;min-width:0}.character-column .character-header{padding:16px 20px}.character-column .character-name{font-size:42px;overflow-wrap:anywhere}.character-column .battle-style{overflow-wrap:anywhere}.character-column .skill-card{padding:18px;min-width:0}.character-column .skill-title{font-size:32px;overflow-wrap:anywhere}.character-column .segment-header{margin-top:8px;flex-wrap:wrap;gap:12px}.character-column .raw-text{font-size:30px;white-space:pre-line}.character-column .value-row{flex-wrap:wrap;gap:16px}.character-column .value-before,.character-column .value-after{font-size:48px;max-width:100%;overflow-wrap:anywhere}.character-column .value-arrow{font-size:40px}';
+ await page.setContent(templates[0].replace(/<script>[\s\S]*?<\/script>/,''));
+ await page.addStyleTag({content:css});
+ await page.evaluate(()=>document.fonts.ready);
+ async function draw(rows,n=1,total=1){
+  return page.evaluate(({rows,templates,n,total,shared,sharedKeys})=>{
+   const root=document.querySelector('.page');
+   root.querySelectorAll('.character-header,.skill-card,.reason-card,.rows').forEach(e=>e.remove());
+   const stack=document.createElement('div');stack.className='rows';
+   for(const items of rows){
+   const grid=document.createElement('div');grid.className='columns';grid.style.setProperty('--cols',items.length);grid.dataset.cols=items.length;
+   for(const item of items){
+    const doc=new DOMParser().parseFromString(templates[item.i],'text/html');
+    const col=document.createElement('section');col.className='character-column';
+    col.append(document.importNode(doc.querySelector('.character-header'),true));
+    if(item.start>0)col.querySelector('.battle-style').append('（続き）');
+    const cards=[...doc.querySelectorAll('.skill-card')];
+    if(shared[item.i]){
+    col.classList.add('shared-block');
+    const targets=document.createElement('div');targets.className='shared-targets';targets.style.setProperty('--targets',item.targetCols??1);
+    for(let j=item.start;j<item.end;j++){const card=document.importNode(cards[j],true);card.dataset.cardId=item.i+':'+j;targets.append(card);}
+    col.append(targets);
+   }else for(let j=item.start;j<item.end;j++){const card=document.importNode(cards[j],true);card.dataset.cardId=item.i+':'+j;col.append(card);}
+    if(!shared[item.i]){
+     let previous=null;
+     for(const card of col.querySelectorAll('.skill-card')){
+      const title=card.querySelector('.skill-title');
+      const key=title.textContent.trim();
+      if(previous===key && sharedKeys[item.i][Number(card.dataset.cardId.split(':')[1])]){title.remove();card.classList.add('group-continuation');}
+      previous=key;
+     }
+    }
+    grid.append(col);
+   }
+   stack.append(grid);
+   }
+   root.append(stack);
+   const number=String(n).padStart(2,'0')+' / '+String(total).padStart(2,'0');
+   document.querySelector('.page-number').textContent=number;document.querySelector('.footer-page').textContent=number;
+   const footer=document.querySelector('footer').getBoundingClientRect();
+   const cols=[...stack.querySelectorAll('.character-column')], rects=cols.map(e=>e.getBoundingClientRect());
+   const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>e.className);
+   return {footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
+  },{rows,templates,n,total,shared:article.characters.map(c=>c.sharedKind??null),sharedKeys:article.characters.map(c=>c.skills.map(s=>s.groupable??false))});
+ }
+
+ return draw;
+}
+export const fits=r=>r.footerGap>=24&&r.right<=1872.01&&!r.overflow.length;
