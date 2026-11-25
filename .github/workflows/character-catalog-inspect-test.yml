@@ -1,0 +1,23 @@
+name: Character catalog inspect test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node src/inspect-character-catalog.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: character-catalog-inspect
+          path: output/character-catalog-inspect/
+          retention-days: 3
