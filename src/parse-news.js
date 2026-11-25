@@ -1,6 +1,9 @@
 import { chromium } from 'playwright';
 import { classifyAdjustment } from './classify-adjustment.js';
 
+const aliases = new Map([['空中格闘','空中格闘攻撃'],['空格','空中格闘攻撃'],['地上格闘','地上格闘攻撃'],['通常格闘','地上格闘攻撃']]);
+const canonical = title => aliases.get(title) ?? title;
+const styleScope = (character, title) => character.style ? 'specified' : /^(?:特殊アクション|空中格闘攻撃|地上格闘攻撃|格闘攻撃)/.test(title ?? '') ? 'all' : 'unknown';
 export function parseLines(lines) {
   const result = { status: 'no-target', characters: [], unparsed: [], outside: [], lines };
   let target = false, character = null, skill = null, reason = false;
@@ -17,9 +20,9 @@ export function parseLines(lines) {
     }
     if (!target) { result.outside.push(line); continue; }
     if (/^今後とも.*よろしくお願いいたします。?$/.test(t)) { target = false; result.outside.push(line); continue; }
-    const header = t.match(/^[【〖\[](.+)\(([^()]*)\)[】〗\]]$/);
+    const header = t.match(/^[【〖\[](.+)\(([^()]*)\)[】〗\]]$/) ?? t.match(/^[【〖\[]([^【】〖〗\[\]()]+)[】〗\]]$/);
     if (header) {
-      character = { name: header[1], style: header[2], rawHeader: raw, line: line.number, adjustments: [], reason: [] };
+      character = { name: header[1], style: header[2] ?? null, rawHeader: raw, line: line.number, adjustments: [], reason: [] };
       result.characters.push(character); skill = null; reason = false; continue;
     }
     if (!character) { warn(line, 'missing character'); continue; }
@@ -31,16 +34,23 @@ export function parseLines(lines) {
     }
     const bullet = raw.match(/^[・●•]\s*(.+)$/);
     const child = raw.match(/^└\s*(.+)$/);
-    if (bullet && (/^(?:[“”"「『]?個性[“”"」』]?技|特殊アクション|格闘攻撃)/.test(bullet[1]) && /[「『]/.test(bullet[1]) || /^(?:空中格闘攻撃|地上格闘攻撃|格闘攻撃|特殊アクション)$/.test(bullet[1].trim()))) {
+    const addition = bullet?.[1].match(/^(特殊アクション\s*[0-9０-９]+[「『].+[」』])を追加(?:しました)?。?$/);
+    if (addition) {
       if (skill && !skill.used) warn(skill.line, 'skill without adjustment');
-      skill = { title: bullet[1], line, used: false }; continue;
+      skill = null;
+      character.adjustments.push({line:line.number,skill:'特殊アクション',raw:bullet[1],action:addition[1],kind:'addition',styleScope:styleScope(character,'特殊アクション'),...classifyAdjustment(bullet[1])});
+      continue;
+    }
+    if (bullet && (/^(?:[“”"「『]?個性[“”"」』]?技|特殊アクション|格闘攻撃)/.test(bullet[1]) && /[「『]/.test(bullet[1]) || /^(?:空中格闘攻撃|空中格闘|空格|地上格闘攻撃|地上格闘|通常格闘|格闘攻撃|特殊アクション)$/.test(bullet[1].trim()))) {
+      if (skill && !skill.used) warn(skill.line, 'skill without adjustment');
+      skill = { title: canonical(bullet[1].trim()), line, used: false }; continue;
     }
     if (child || bullet) {
       if (child && !skill) { warn(line, 'orphan adjustment'); continue; }
       if (bullet && skill && !skill.used) warn(skill.line, 'skill without adjustment');
       if (bullet) skill = null;
       const content = (child || bullet)[1];
-      character.adjustments.push({ line: line.number, skill: skill?.title ?? null, raw: content, ...classifyAdjustment(content) });
+      character.adjustments.push({ line: line.number, skill: skill?.title ?? null, styleScope: styleScope(character,skill?.title), raw: content, ...classifyAdjustment(content) });
       if (skill) skill.used = true;
       continue;
     }
