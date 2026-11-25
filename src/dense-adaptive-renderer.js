@@ -45,8 +45,8 @@ export async function createAdaptiveRenderer(page,article){
      const icon=document.createElement('span');icon.className='adjustment-icon';icon.style.color=tint;
      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-     path.setAttribute('d',symbol==='↑'?'M12 20V4 M5 11L12 4L19 11':symbol==='↓'?'M12 4V20 M5 13L12 20L19 13':'M5 12H19');
-     path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','3');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');svg.append(path);icon.append(svg);
+     path.setAttribute('d',symbol==='↑'?'M12 1L23 12H17V23H7V12H1Z':symbol==='↓'?'M12 23L1 12H7V1H17V12H23Z':'M3 9H21V15H3Z');
+     path.setAttribute('fill','currentColor');path.setAttribute('stroke','none');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');svg.append(path);icon.append(svg);
      const copy=document.createElement('span');copy.className='adjustment-copy';
      const lines=original.split('\n');
      for(let j=0;j<lines.length;j++){
