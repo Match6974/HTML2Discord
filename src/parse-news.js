@@ -31,7 +31,7 @@ export function parseLines(lines) {
     }
     const bullet = raw.match(/^[・●•]\s*(.+)$/);
     const child = raw.match(/^└\s*(.+)$/);
-    if (bullet && /^(?:[“”"「『]?個性[“”"」』]?技|特殊アクション|格闘攻撃)/.test(bullet[1]) && /[「『]/.test(bullet[1])) {
+    if (bullet && (/^(?:[“”"「『]?個性[“”"」』]?技|特殊アクション|格闘攻撃)/.test(bullet[1]) && /[「『]/.test(bullet[1]) || /^(?:空中格闘攻撃|地上格闘攻撃|格闘攻撃|特殊アクション)$/.test(bullet[1].trim()))) {
       if (skill && !skill.used) warn(skill.line, 'skill without adjustment');
       skill = { title: bullet[1], line, used: false }; continue;
     }
