@@ -58,13 +58,14 @@ try {
  const draw=await createAdaptiveRenderer(page,article);
  // A row contains consecutive character blocks. Prefer whole characters,
  // then use remaining space for a prefix of the next character if necessary.
+ async function planPages(useSearch){
  const plans=[];let rows=[],i=0,start=0;
  const count=i=>article.characters[i].skills.length;
  while(i<article.characters.length){
   assert.ok(count(i)>0);
   // Search complete-character row combinations before allowing a split.
   // Bounded beam search keeps large articles from causing exponential work.
-  if(!rows.length && start===0 && !article.characters[i].sharedKind){
+  if(useSearch && !rows.length && start===0 && !article.characters[i].sharedKind){
    let beam=[{rows:[],next:i,gap:Infinity}],best=null;
    for(let depth=0;depth<8&&beam.length;depth++){
     const next=[];
@@ -124,6 +125,14 @@ try {
   if(start===count(i)){i++;start=0;}
  }
  if(rows.length)plans.push({rows});
+ return plans;
+ }
+ const greedy=await planPages(false);
+ const searched=await planPages(true);
+ const score=p=>[p.filter(x=>x.fallback).length,p.length,p.reduce((n,x)=>n+(x.rows??[]).flat().filter(y=>y.start>0).length,0)];
+ const compare=(a,b)=>{const x=score(a),y=score(b);return x[0]-y[0]||x[1]-y[1]||x[2]-y[2];};
+ const plans=compare(searched,greedy)<0?searched:greedy;
+ await writeFile(dir+'/planning-results.json',JSON.stringify({greedy:score(greedy),searched:score(searched),selected:plans===searched?'search':'greedy',scoreFields:['fallbackPages','pages','continuations']},null,2));
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
