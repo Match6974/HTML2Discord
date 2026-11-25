@@ -130,7 +130,8 @@ const html = `
       padding: 48px;
       background: #101827;
       color: #ffffff;
-      font-family: sans-serif;
+      font-family: 'Noto Sans CJK JP', 'Noto Sans JP', 'Yu Gothic', Meiryo, sans-serif;
+      font-style: normal;
       overflow: hidden;
       position: relative;
     }
