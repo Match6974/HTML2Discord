@@ -155,6 +155,22 @@ try {
  return plans;
  }
  const plans=await planPages();
+ // Merge adjacent pages at shared/individual boundaries, retaining source order.
+ // Convert column-major pages into consecutive rows only for merge candidates.
+ function asRows(p){return p.columnCount?p.rows.flatMap(column=>column.map(item=>[item])):p.rows;}
+ for(let k=0;k+1<plans.length;){
+  const a=plans[k],b=plans[k+1];
+  if(a.fallback||b.fallback){k++;continue;}
+  const left=a.rows.flat().at(-1),right=b.rows.flat()[0];
+  if(Boolean(article.characters[left.i].sharedKind)===Boolean(article.characters[right.i].sharedKind)){k++;continue;}
+  const candidates=[[...asRows(a),...asRows(b)]];
+  // A column-major page with one item per column can become a single horizontal row.
+  const compact=p=>p.columnCount&&p.rows.every(c=>c.length===1)?[p.rows.flat()]:asRows(p);
+  candidates.unshift([...compact(a),...compact(b)]);
+  let merged=false;
+  for(const rows of candidates){if(fits(await draw(rows))){plans.splice(k,2,{rows});merged=true;break;}}
+  if(!merged)k++;
+ }
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
