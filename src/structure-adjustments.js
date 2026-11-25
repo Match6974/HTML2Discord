@@ -20,7 +20,7 @@ export function structureAdjustments(parsed) {
     const evidence={source:'本文',line:a.line,text:a.raw};
     let segments=[segment(a,scope,evidence)];
         // Shared game rule confirmed by the user: full-gauge-only usage restriction.
-        if (/^(?:弾数|ゲージ(?:残量)?)(?:が|は)?\s*100\s*%(?:でないと|でなければ|じゃないと|の状態でないと)使用できないように(?:変更|調整)(?:しました)?。?$/.test(a.raw.normalize('NFKC').trim())) {
+        if (/^(?:弾数|ゲージ(?:残量)?)(?:が|は)?\s*100\s*%(?:(?:でないと|でなければ|じゃないと|の状態でないと)使用できないように|のときのみ使用可能になるように)(?:変更|調整)(?:しました)?。?$/.test(a.raw.normalize('NFKC').trim())) {
           segments=[{...segment({...a,before:'1～100',after:100,direction:'unknown',effect:'nerf',color:'red'},scope,{source:'ユーザー確認済み共通仕様',text:'変更前は1～100%で使用可能、変更後は100%のみ',body:evidence}),unit:'%'}];
         }
     // Narrow evidence rule: explicit shared beta/gamma low-level ammo statement.
