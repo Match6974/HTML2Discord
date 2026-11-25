@@ -23,7 +23,7 @@ try {
  const data=structureAdjustments(parsed);
  await writeFile(dir+'/data.json',JSON.stringify({url,...data},null,2));
  assert.equal(data.status,'ok');
- const colors={green:'#16A34A',red:'#DC2626',purple:'#9333EA',blue:'#2563EB'};
+ const colors={green:'#16A34A',red:'#DC2626',purple:'#9333EA',blue:'#2563EB',yellow:'#EAB308',orange:'#F97316'};
  browser=await chromium.launch();
  const metadata=await browser.newPage({javaScriptEnabled:false});
  await metadata.route('**/*',route=>route.abort());
