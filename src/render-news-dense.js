@@ -92,6 +92,8 @@ try {
   }
   if(rows.length){plans.push({rows});rows=[];continue;}
   // A single full-width card cannot fit at normal size. Use legacy fallback.
+  const rejected=await draw([[{i,start,end:start+1}]]);
+  await writeFile(dir+'/fallback-'+i+'-'+start+'.json',JSON.stringify(rejected,null,2));
   plans.push({fallback:{i,start,end:start+1}});start++;
   if(start===count(i)){i++;start=0;}
  }
@@ -123,5 +125,6 @@ try {
  }
  assert.deepEqual(ids,article.characters.flatMap((c,i)=>c.skills.map((_,j)=>i+':'+j)));
  assert.equal(segments,article.characters.flatMap(c=>c.skills).reduce((n,a)=>n+a.display.segments.length,0));
- await writeFile(dir+'/result.json',JSON.stringify({url,status:'ok',total:plans.length,cards:ids.length,segments,mixedPages:report.filter(p=>new Set(p.columnCounts).size>1).length,columnCounts:report.map(p=>p.columnCounts)},null,2));
+ await writeFile(dir+'/result.json',JSON.stringify({url,status:'ok',total:plans.length,cards:ids.length,segments,fallbackPages:report.filter(p=>p.fallback).length,mixedPages:report.filter(p=>new Set(p.columnCounts).size>1).length,columnCounts:report.map(p=>p.columnCounts)},null,2));
+ assert.ok(!plans.every(p=>p.fallback),'All pages used legacy fallback; inspect fallback diagnostics');
 } catch(e){await writeFile(dir+'/error.txt',String(e.stack??e));throw e;} finally {await browser?.close();}
