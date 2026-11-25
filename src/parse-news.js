@@ -54,6 +54,13 @@ function parseIndividualLines(lines) {
       if (skill) skill.used = true;
       continue;
     }
+    const previous=character.adjustments.at(-1);
+    if (/^\(.+\)$/.test(t) && /^[\s　]/.test(line.text) && previous && (previous.noteLines?.at(-1) ?? previous.line)===line.number-1) {
+      previous.noteLines=[...(previous.noteLines??[]),line.number];
+      previous.notes=[...(previous.notes??[]),raw];
+      previous.raw+='\n'+raw;
+      continue;
+    }
     warn(line, 'unknown adjustment format');
   }
   if (skill && !skill.used) warn(skill.line, 'skill without adjustment');
@@ -75,14 +82,14 @@ export function parseLines(lines) {
     }
     group=null;target=null;reason=false;
   };
-  for(const line of lines){
+  for(const [index,line] of lines.entries()){
     const t=line.text.trim().normalize('NFKC');
     if(line.heading || /^■/.test(t)){
       finish();active=/^■?\s*バトルスタイル調整$/.test(t);individual.push(line);continue;
     }
     if(!active){individual.push(line);continue;}
     const startGeneral=/^【格闘攻撃】$/.test(t);
-    const startTargets=/^・(?:下記|以下)の.*個性.*技.*(?:調整|変更)$/.test(t);
+    const startTargets=/^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
     const startActions=/^一部の特殊アクションにて.*変更$/.test(t);
     if(startGeneral||startTargets||startActions){
       finish();
@@ -92,8 +99,10 @@ export function parseLines(lines) {
       continue;
     }
     if(!group){individual.push(line);continue;}
+    if(/^今後とも.*よろしくお願いいたします。?$/.test(t)){finish();active=false;individual.push(line);continue;}
     const header=t.match(/^【(.+?)\(([^()]*)\)】$/) ?? t.match(/^【([^】]+)】$/);
-    if(header && (reason||group.kind==='general'||group.actionTargets)){finish();individual.push(line);continue;}
+    const next=lines[index+1]?.text.trim()??'';
+    if(header && (reason||group.kind==='general'||group.actionTargets||/^[・●•]/.test(next))){finish();individual.push(line);continue;}
     group.sourceLines.push(line);
     if(/^[<〈《]?調整意図[>〉》]?$/.test(t)){reason=true;continue;}
     if(reason){
