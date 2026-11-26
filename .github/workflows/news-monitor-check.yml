@@ -1,6 +1,11 @@
 name: NEWS monitor check
 on:
   workflow_dispatch:
+    inputs:
+      delivery_article_id:
+        description: Optional past article ID for test Discord delivery
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -9,6 +14,7 @@ jobs:
     steps:
       - name: Check NEWS scan and dispatch
         env:
+          DELIVERY_ARTICLE_ID: ${{ inputs.delivery_article_id }}
           TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
         run: |
           node --input-type=module <<'JS'
@@ -18,7 +24,7 @@ jobs:
             const r=await fetch('https://mhaur-patchnote-discord.match6974.workers.dev/internal/monitor',{
               method:'POST',redirect:'error',signal:AbortSignal.timeout(60000),
               headers:{Authorization:'Bearer '+process.env.TEST_TOKEN,'Content-Type':'application/json'},
-              body:JSON.stringify({action})});
+              body:JSON.stringify({action,articleId:process.env.DELIVERY_ARTICLE_ID})});
             if(!r.ok) console.log('Monitor error:',(await r.text()).slice(0,500));
             assert.equal(r.status,200,action+' HTTP '+r.status);
             const data=await r.json();
@@ -28,7 +34,7 @@ jobs:
           const scan=await call('scan');
           assert.ok(scan.articleCount>0);
           console.log('NEWS scan passed:',JSON.stringify(scan));
-          const dispatch=await call('dispatch-test');
+          const dispatch=await call(process.env.DELIVERY_ARTICLE_ID?'delivery-test':'dispatch-test');
           assert.equal(dispatch.dispatched,true);
           console.log('GitHub dispatch accepted:',dispatch.articleId);
           JS
