@@ -1,5 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { ArticleRepository } from "./article-state.js";
+import { fetchNews, dispatchNews } from "./news-monitor.js";
+const MONITOR_NAME = "news-monitor-preview-v1";
+const MONITOR_PATH = "/internal/monitor";
 
 const TEST_NAME = "internal-persistence-test-v1";
 const TEST_PATH = "/internal/test/persistence";
@@ -78,6 +81,24 @@ export class ArticleState extends DurableObject {
 
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === MONITOR_PATH && request.method === "POST") {
+      if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(MONITOR_NAME).toString()) return json({status:"forbidden"},403);
+      const {action}=await request.json();
+      const ids=await fetchNews();
+      if(action==="dispatch-test"){
+        await dispatchNews(this.env,ids[0]);
+        return json({status:"ok",articleId:ids[0],dispatched:true});
+      }
+      const result=await this.storage.transaction(async tx=>{
+        const seen=await tx.get("seen");
+        const known=new Set(seen??[]);
+        const fresh=seen?ids.filter(id=>!known.has(id)):[];
+        await tx.put("seen",[...new Set([...known,...ids])]);
+        return {baseline:!seen,detected:fresh,articleCount:ids.length};
+      });
+      console.log("NEWS preview",JSON.stringify(result));
+      return json({status:"ok",...result});
+    }
     if (path === CONCURRENCY_PATH && request.method === "POST") {
       const body=await request.json();
       if (!validRun(body.run) || this.ctx.id.toString() !== this.env.ARTICLE_STATE.idFromName(concurrencyName(body.run)).toString())
@@ -130,8 +151,27 @@ export class ArticleState extends DurableObject {
 }
 
 export default {
+  async scheduled(controller,env,ctx) {
+    const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
+    ctx.waitUntil((async()=>{
+      const response=await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action:"scan"})});
+      if(!response.ok) throw new Error("NEWS scan failed: "+response.status);
+    })());
+  },
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === MONITOR_PATH) {
+      if(request.method!=="POST") return json({status:"method-not-allowed"},405);
+      if(!await authorized(request,env)) return json({status:"unauthorized"},401);
+      try {
+        const raw=await request.text();
+        if(raw.length>128) return json({status:"invalid-request"},400);
+        const {action}=JSON.parse(raw);
+        if(!["scan","dispatch-test"].includes(action)) return json({status:"invalid-action"},400);
+        const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
+        return await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action})});
+      } catch { return json({status:"monitor-error"},500); }
+    }
     if (path === CONCURRENCY_PATH) {
       if (request.method !== "POST") return json({status:"method-not-allowed"},405);
       if (!await authorized(request,env)) return json({status:"unauthorized"},401);
