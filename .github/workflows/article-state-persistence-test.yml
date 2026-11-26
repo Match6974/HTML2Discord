@@ -1,0 +1,57 @@
+name: Article state persistence test
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Test operation
+        type: choice
+        options:
+          - seed
+          - verify
+          - cleanup
+        default: seed
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-patchnote-deploy
+  cancel-in-progress: false
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Test deployed Durable Object
+        env:
+          TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
+          TEST_ACTION: ${{ inputs.action }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const url = 'https://mhaur-patchnote-discord.match6974.workers.dev/internal/test/persistence';
+          const token = process.env.TEST_TOKEN;
+          assert.ok(token?.length >= 32, 'Missing test secret');
+          async function call(action, auth = true) {
+            const response = await fetch(url, {
+              method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
+              headers: {'Content-Type':'application/json', ...(auth ? {Authorization:'Bearer '+token}: {})},
+              body: JSON.stringify({action})
+            });
+            return {code:response.status, body:await response.json()};
+          }
+          assert.equal((await call('read',false)).code,401,'Unauthenticated access must fail');
+          const action = process.env.TEST_ACTION;
+          const result = await call(action);
+          assert.equal(result.code,200,'Test operation failed: HTTP '+result.code);
+          assert.equal(result.body.status,'ok');
+          const read = await call('read');
+          assert.equal(read.code,200);
+          assert.deepEqual(read.body.states,result.body.states);
+          if (action === 'cleanup') assert.deepEqual(read.body.states,[null,null]);
+          else {
+            const verified = await call('verify');
+            assert.equal(verified.code,200);
+            assert.deepEqual(verified.body.states,read.body.states);
+            console.log('Saved snapshot SHA-256:', (await import('node:crypto')).createHash('sha256').update(JSON.stringify(read.body.states)).digest('hex'));
+          }
+          console.log('Persistence test passed:',action);
+          JS
