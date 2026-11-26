@@ -26,5 +26,8 @@
     "crons": [
       "*/5 * * * *"
     ]
+  },
+  "vars": {
+    "AUTO_TEST_DELIVERY": "true"
   }
 }
