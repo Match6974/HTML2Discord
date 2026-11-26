@@ -92,19 +92,20 @@ try {
   if(!rows.length && !article.characters[i].sharedKind){
    let best=null;
    for(let width=1;width<=MAX_COLUMNS;width++){
+    for(const fontScale of [1,0.9,0.8]){
     const columns=[];let next=i,offset=start;
     for(let col=0;col<width&&next<article.characters.length&&!article.characters[next].sharedKind;col++){
      const items=[];
      while(next<article.characters.length&&!article.characters[next].sharedKind){
       const item={i:next,start:offset,end:count(next)};
-      if(fits(await draw([...columns,[...items,item]],1,1,width))){
+      if(fits(await draw([...columns,[...items,item]],1,1,width,fontScale))){
        items.push(item);next++;offset=0;continue;
       }
       {
        for(let end=item.end-1;end>offset;end--){
         if(!boundary(next,end))continue;
         const partial={...item,end};
-        if(fits(await draw([...columns,[...items,partial]],1,1,width))){items.push(partial);offset=end;break;}
+        if(fits(await draw([...columns,[...items,partial]],1,1,width,fontScale))){items.push(partial);offset=end;break;}
        }
       }
       break;
@@ -115,11 +116,14 @@ try {
     if(!columns.length)continue;
     const splits=columns.flat().filter(x=>x.end<count(x.i)).length;
     let actualWidth=width;
-    if(columns.length<width&&fits(await draw(columns,1,1,columns.length)))actualWidth=columns.length;
-    const candidate={rows:columns,columnCount:actualWidth,next,offset,splits,unused:actualWidth-columns.length};
-    if(!best||next>best.next||(next===best.next&&(offset>best.offset||(offset===best.offset&&(candidate.unused<best.unused||(candidate.unused===best.unused&&(splits<best.splits||(splits===best.splits&&candidate.columnCount<best.columnCount))))))))best=candidate;
+    if(columns.length<width&&fits(await draw(columns,1,1,columns.length,fontScale)))actualWidth=columns.length;
+    const candidate={rows:columns,columnCount:actualWidth,next,offset,splits,fontScale,unused:actualWidth-columns.length};
+    const rank=x=>[x.next,x.offset,-x.unused,x.fontScale,-x.splits,-x.columnCount];
+    const better=(a,b)=>{const aa=rank(a),bb=rank(b);for(let j=0;j<aa.length;j++){if(aa[j]!==bb[j])return aa[j]>bb[j];}return false;};
+    if(!best||better(candidate,best))best=candidate;
+    }
    }
-   if(best){plans.push({rows:best.rows,columnCount:best.columnCount});i=best.next;start=best.offset;continue;}
+   if(best){plans.push({rows:best.rows,columnCount:best.columnCount,fontScale:best.fontScale});i=best.next;start=best.offset;continue;}
   }
   if(rows.length&&!article.characters[i].sharedKind){plans.push({rows});rows=[];continue;}
   const candidates=[];
@@ -184,10 +188,10 @@ try {
  for(const plan of plans){
   if(plan.fallback)continue;
   if(plan.columnCount&&plan.rows.length<plan.columnCount){
-   if(fits(await draw(plan.rows,1,1,plan.rows.length)))plan.columnCount=plan.rows.length;
+   if(fits(await draw(plan.rows,1,1,plan.rows.length,plan.fontScale??1)))plan.columnCount=plan.rows.length;
   }
-  plan.fontScale=1;
-  for(const scale of [1.1,1.2,1.3,1.4,1.5]){
+  plan.fontScale??=1;
+  for(const scale of [0.9,1,1.1,1.2,1.3,1.4,1.5].filter(s=>s>plan.fontScale)){
    if(!fits(await draw(plan.rows,1,1,plan.columnCount??0,scale)))break;
    plan.fontScale=scale;
   }
