@@ -46,7 +46,26 @@ const noTarget=result.status==='no-target';
  try{
   const page=await browser.newPage({javaScriptEnabled:false});await page.route('**/*',r=>r.abort());
   await page.setContent(await readFile(dir+'/source.html','utf8'),{waitUntil:'domcontentloaded'});
-  title=await page.evaluate(()=>document.querySelector('meta[property="og:title"]')?.content?.trim()||document.querySelector('h1')?.textContent?.trim()||document.title.trim());
+  const {fetchNews}=await import('./fetch-news.js');
+  const listing=await fetchNews('https://mhaur.bn-ent.net/news/');
+  await page.setContent(listing.html,{waitUntil:'domcontentloaded'});
+  title=await page.evaluate(({articleId,base})=>{
+   const matches=href=>{try{const u=new URL(href,base);return u.origin===new URL(base).origin&&u.pathname==='/news/'&&u.searchParams.get('p')===articleId;}catch{return false;}};
+   for(const h of document.querySelectorAll('h3')){
+    if([h.closest('a[href]'),...h.querySelectorAll('a[href]')].some(a=>a&&matches(a.getAttribute('href'))))return h.textContent.trim();
+    const card=h.closest('article,li');
+    if(card&&card.querySelectorAll('h3').length===1&&[...card.querySelectorAll('a[href]')].some(a=>matches(a.getAttribute('href'))))return h.textContent.trim();
+   }
+   for(const a of document.querySelectorAll('a[href]')){
+    if(!matches(a.getAttribute('href')))continue;
+    const h=a.querySelector('h3');if(h?.textContent.trim())return h.textContent.trim();
+   }
+   return '';
+  },{articleId,base:url.href});
+  if(!title){
+   await page.setContent(await readFile(dir+'/source.html','utf8'),{waitUntil:'domcontentloaded'});
+   title=await page.evaluate(()=>{const root=document.querySelector('.articleInner');const h=root?.querySelector('h1,h2');return h?.textContent.trim()||'';});
+  }
  }finally{await browser.close();}
  assert.ok(title,'NEWS title missing');
  const webhook=new URL((destination==='production'?process.env.DISCORD_PRODUCTION_WEBHOOK_URL:process.env.DISCORD_TEST_WEBHOOK_URL)??'https://invalid.invalid');
