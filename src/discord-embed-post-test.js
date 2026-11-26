@@ -26,12 +26,10 @@ function plan(images) {
   if(batch.length) batches.push(batch);
   return batches;
 }
-async function post(label,batch,total) {
-  const names=batch.map(x=>x.name);
-  const form=new FormData();
-  form.append('payload_json',JSON.stringify({
-    content: '【表示テスト】'+label+' | '+batch[0].page+'–'+batch.at(-1).page+' / '+total+'ページ',
-    embeds: batch[0].page===1 ? [{
+async function postOverview(label,total) {
+  const payload={
+    content: '【表示テスト】'+label,
+    embeds: [{
       color: 0x5865F2,
       author: {name:'MY HERO ULTRA RUMBLE'},
       title: '2026/11/11 バトルスタイル調整',
@@ -39,7 +37,25 @@ async function post(label,batch,total) {
       description: 'バランス調整の内容を画像にまとめました。\\n[公式NEWSはこちら](https://mhaur.bn-ent.net/news/?p=1573)'.replace('\\n','\n'),
       fields: [{name:'対象スタイル',value:'8スタイル',inline:true},{name:'調整項目',value:'24件',inline:true}],
       footer: {text:'HTML2Discord | 全'+total+'ページ（表示テスト）'}
-    }] : [],
+    }],
+    allowed_mentions:{parse:[]}
+  };
+  let response;
+  try { response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),redirect:'error',signal:AbortSignal.timeout(30000)}); }
+  catch { throw new Error('Discord overview request failed; check channel before rerunning'); }
+  if(!response.ok) throw new Error('Discord overview returned HTTP '+response.status);
+  const result=await response.json();
+  assert(result.id,'Missing overview message ID');
+  assert.equal(result.embeds?.length,1);
+  assert.equal(result.embeds[0].title,'2026/11/11 バトルスタイル調整');
+  assert.equal(result.attachments?.length,0);
+  console.log('Overview posted: HTTP '+response.status+', message '+result.id);
+}
+async function post(label,batch,total) {
+  const names=batch.map(x=>x.name);
+  const form=new FormData();
+  form.append('payload_json',JSON.stringify({
+    content: '【表示テスト】'+label+' | '+batch[0].page+'–'+batch.at(-1).page+' / '+total+'ページ',
     allowed_mentions:{parse:[]},
     attachments:names.map((filename,id)=>({id,filename}))
   }));
@@ -50,8 +66,7 @@ async function post(label,batch,total) {
   if(!response.ok) throw new Error('Discord returned HTTP '+response.status+'; check channel before rerunning');
   const result=await response.json();
   assert(result.id,'Missing Discord message ID');
-  assert.equal(result.embeds?.length ?? 0,batch[0].page===1?1:0,'Unexpected embed count');
-  if(batch[0].page===1) assert.equal(result.embeds[0].title,'2026/11/11 バトルスタイル調整');
+  assert.equal(result.embeds?.length ?? 0,0,'Unexpected embed on image message');
   assert.deepEqual(result.attachments?.map(x=>x.filename),names,'Discord attachment order/count mismatch');
   console.log(label+': HTTP '+response.status+', message '+result.id+', '+names.join(', '));
 }
@@ -73,6 +88,8 @@ const plans=cases.map(([label,input,expected])=>{
 });
 assert.throws(()=>plan([images[0],images[0]]));
 for(const {label,batches,total} of plans){
+ await postOverview(label,total);
+ await new Promise(resolve=>setTimeout(resolve,1100));
  for(const batch of batches){
    await post(label,batch,total);
    await new Promise(resolve=>setTimeout(resolve,1100));
