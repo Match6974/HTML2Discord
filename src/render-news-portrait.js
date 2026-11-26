@@ -10,9 +10,13 @@ import {loadMaster,createImageLoader} from './portrait-image-loader.js';
 const dir='output/news-portrait';
 await mkdir(dir,{recursive:true});
 let browser;
+const started=performance.now(), timings={};let checkpoint=started;
+function mark(name){const now=performance.now();timings[name]=Math.round(now-checkpoint);checkpoint=now;}
+let drawCalls=0,drawMs=0,screenshotMs=0;
 try {
  const {html,url}=await fetchNews(process.env.NEWS_URL);
  await writeFile(dir+'/source.html',html);
+ mark('fetchNews');
  const parsed=await parseNews(html);
  await writeFile(dir+'/parsed.json',JSON.stringify(parsed,null,2));
  if(parsed.status==='no-target'){
@@ -23,6 +27,7 @@ try {
  const data=structureAdjustments(parsed);
  await writeFile(dir+'/data.json',JSON.stringify({url,...data},null,2));
  assert.equal(data.status,'ok');
+ mark('parseAndStructure');
  const colors={green:'#16A34A',red:'#DC2626',purple:'#9333EA',blue:'#2563EB',yellow:'#EAB308',orange:'#F97316'};
  browser=await chromium.launch();
  const metadata=await browser.newPage({javaScriptEnabled:false});
@@ -55,8 +60,10 @@ try {
  // Preserve source order across shared and individual groups.
  const order=[...(data.shared??[]).map(g=>g.line),...data.characters.map(c=>c.line)];
  article.characters=article.characters.map((c,i)=>({c,line:order[i]})).sort((a,b)=>a.line-b.line).map(x=>x.c);
+ mark('metadataAndArticle');
  const masterWarnings=[];
  const master=await loadMaster(['output/character-master/master.json','data/character-master.json'],masterWarnings);
+ mark('loadMaster');
  const validator=await browser.newPage();
  const {images,cache,warnings}=createImageLoader(master,{validate:src=>validator.evaluate(async src=>{const img=new Image();img.src=src;await img.decode();},src)});
  warnings.push(...masterWarnings);
@@ -66,9 +73,12 @@ try {
  }
  await writeFile(dir+'/image-results.json',JSON.stringify({downloaded:[...cache].filter(x=>x[1]).map(x=>x[0]),warnings},null,2));
  await validator.close();
+ mark('loadImages');
  for(const warning of warnings)console.warn('Portrait warning:',JSON.stringify(warning));
  const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
- const draw=await createAdaptiveRenderer(page,article);
+ const render=await createAdaptiveRenderer(page,article);
+ mark('rendererSetup');
+ const draw=async(...args)=>{const t=performance.now();drawCalls++;try{return await render(...args);}finally{drawMs+=performance.now()-t;}};
  // A row contains consecutive character blocks. Prefer whole characters,
  // then use remaining space for a prefix of the next character if necessary.
  async function planPages(){
@@ -146,6 +156,7 @@ try {
  return plans;
  }
  const plans=await planPages();
+ mark('planPages');
  // Merge adjacent pages at shared/individual boundaries, retaining source order.
  // Convert column-major pages into consecutive rows only for merge candidates.
  function asRows(p){return p.columnCount?p.rows.flatMap(column=>column.map(item=>[item])):p.rows;}
@@ -162,6 +173,7 @@ try {
   for(const rows of candidates){if(fits(await draw(rows))){plans.splice(k,2,{rows});merged=true;break;}}
   if(!merged)k++;
  }
+ mark('mergePages');
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
@@ -183,7 +195,8 @@ try {
    }finally{await fallback.close();}
   }else{
    info=await draw(plan.rows,k+1,plans.length,plan.columnCount??0);assert.ok(fits(info),JSON.stringify(info));
-   const png=await page.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);
+   const screenshotStart=performance.now();
+   const png=await page.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);screenshotMs+=performance.now()-screenshotStart;
   }
   ids.push(...info.ids);segments+=info.segments;report.push({page:k+1,...plan,columnCounts:plan.columnCount?[plan.columnCount]:plan.rows?.map(r=>r[0].targetCols??r.length)??[1],...info});
   await writeFile(dir+'/layout-results.json',JSON.stringify(report,null,2));
@@ -192,4 +205,4 @@ try {
  assert.equal(segments,article.characters.flatMap(c=>c.skills).reduce((n,a)=>n+a.display.segments.length,0));
  await writeFile(dir+'/result.json',JSON.stringify({url,status:'ok',total:plans.length,cards:ids.length,segments,fallbackPages:report.filter(p=>p.fallback).length,mixedPages:report.filter(p=>new Set(p.columnCounts).size>1).length,columnCounts:report.map(p=>p.columnCounts)},null,2));
  assert.ok(!plans.every(p=>p.fallback),'All pages used legacy fallback; inspect fallback diagnostics');
-} catch(e){await writeFile(dir+'/error.txt',String(e.stack??e));throw e;} finally {await browser?.close();}
+} catch(e){await writeFile(dir+'/error.txt',String(e.stack??e));throw e;} finally {mark('renderAndFinalize');await browser?.close();mark('browserClose');const profile={unit:'ms',total:Math.round(performance.now()-started),timings,drawCalls,drawMs:Math.round(drawMs),screenshotMs:Math.round(screenshotMs)};await writeFile(dir+'/performance.json',JSON.stringify(profile,null,2));console.log('Performance:',JSON.stringify(profile));}
