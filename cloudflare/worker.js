@@ -97,7 +97,12 @@ export class ArticleState extends DurableObject {
     }
     if (path === MONITOR_PATH && request.method === "POST") {
       if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(MONITOR_NAME).toString()) return json({status:"forbidden"},403);
-      const {action}=await request.json();
+      const {action,articleId}=await request.json();
+      if(action==="delivery-test"){
+        if(!/^[1-9][0-9]*$/.test(articleId??""))return json({status:"invalid-id"},400);
+        await dispatchNews(this.env,articleId,true);
+        return json({status:"ok",articleId,dispatched:true});
+      }
       let ids;
       try { ids=await fetchNews(); } catch(e) {
         const message=String(e?.message??"Unknown error");
@@ -209,10 +214,10 @@ export default {
       try {
         const raw=await request.text();
         if(raw.length>128) return json({status:"invalid-request"},400);
-        const {action}=JSON.parse(raw);
-        if(!["scan","dispatch-test"].includes(action)) return json({status:"invalid-action"},400);
+        const {action,articleId}=JSON.parse(raw);
+        if(!["scan","dispatch-test","delivery-test"].includes(action)) return json({status:"invalid-action"},400);
         const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
-        return await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action})});
+        return await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action,articleId})});
       } catch(e) { return json({status:"monitor-error",stage:"worker-to-object",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
     }
     if (path === CONCURRENCY_PATH) {
