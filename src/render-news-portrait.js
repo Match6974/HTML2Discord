@@ -8,6 +8,7 @@ import {structureAdjustments} from './structure-adjustments.js';
 import {buildPatchNoteHtml} from './patch-note-html.js';
 import {loadMaster,createImageLoader} from './portrait-image-loader.js';
 const dir='output/news-portrait';
+const MAX_COLUMNS=10;
 await mkdir(dir,{recursive:true});
 let browser;
 const started=performance.now(), timings={};let checkpoint=started;
@@ -89,7 +90,7 @@ try {
   // Fill each column top-to-bottom, preserving contiguous source order.
   if(!rows.length && !article.characters[i].sharedKind){
    let best=null;
-   for(let width=1;width<=6;width++){
+   for(let width=1;width<=MAX_COLUMNS;width++){
     const columns=[];let next=i,offset=start;
     for(let col=0;col<width&&next<article.characters.length&&!article.characters[next].sharedKind;col++){
      const items=[];
@@ -120,14 +121,14 @@ try {
   const candidates=[];
   if(article.characters[i].sharedKind){
    for(let end=count(i);end>start;end--){
-    for(let cols=1;cols<=Math.min(article.characters[i].sharedKind==='general'?1:6,end-start);cols++){
+    for(let cols=1;cols<=Math.min(article.characters[i].sharedKind==='general'?1:MAX_COLUMNS,end-start);cols++){
      const row=[{i,start,end,targetCols:cols}];
      const info=await draw([...rows,row]);
      if(fits(info))candidates.push({row,complete:end===count(i)?1:0,cards:end-start,gap:info.footerGap});
     }
     if(candidates.length)break;
    }
-  }else for(let width=1;width<=6&&i+width<=article.characters.length;width++){
+  }else for(let width=1;width<=MAX_COLUMNS&&i+width<=article.characters.length;width++){
    if(article.characters[i+width-1].sharedKind)break;
    const row=Array.from({length:width},(_,j)=>({i:i+j,start:j===0?start:0,end:count(i+j)}));
    if(fits(await draw([...rows,row])))candidates.push({row,complete:width,cards:row.reduce((n,x)=>n+x.end-x.start,0)});
