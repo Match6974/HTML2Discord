@@ -79,7 +79,8 @@ try {
  const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
  const render=await createAdaptiveRenderer(page,article);
  mark('rendererSetup');
- const draw=async(...args)=>{const t=performance.now();drawCalls++;try{return await render(...args);}finally{drawMs+=performance.now()-t;}};
+ const trials=[];
+ const draw=async(...args)=>{const t=performance.now();drawCalls++;try{const info=await render(...args);trials.push({columns:args[3]??0,fontScale:args[4]??1,items:args[0],fits:fits(info),...info});return info;}finally{drawMs+=performance.now()-t;}};
  // A row contains consecutive character blocks. Prefer whole characters,
  // then use remaining space for a prefix of the next character if necessary.
  async function planPages(){
@@ -167,6 +168,8 @@ try {
  }
  const plans=await planPages();
  mark('planPages');
+ await writeFile(dir+'/layout-trials.json',JSON.stringify(trials,null,2));
+ console.log('Layout candidates:',JSON.stringify(trials.filter(t=>!t.fits).slice(0,12)));
  // Merge adjacent pages at shared/individual boundaries, retaining source order.
  // Convert column-major pages into consecutive rows only for merge candidates.
  function asRows(p){return p.columnCount?p.rows.flatMap(column=>column.map(item=>[item])):p.rows;}
@@ -196,6 +199,8 @@ try {
    plan.fontScale=scale;
   }
  }
+ await writeFile(dir+'/layout-trials.json',JSON.stringify(trials,null,2));
+ console.log('Selected layouts:',JSON.stringify(plans));
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
