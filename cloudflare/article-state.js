@@ -39,7 +39,7 @@ export class ArticleRepository {
         workflowRunId: null, workflowRunAttempt: null,
         lockToken: null, lockAcquiredAt: null, lockExpiresAt: null,
         overviewPosted: false, postedPages: [], totalPages: null,
-        payloadDigest: null, lastError: null, retryCount: 0, completedAt: null
+        payloadDigest: null, pendingPost: null, sentMessages: [], lastError: null, retryCount: 0, completedAt: null
       };
       await tx.put(key, state);
       return { created: true, state };
@@ -77,7 +77,7 @@ export class ArticleRepository {
 
   ownsLock(state, lockToken) {
     return Boolean(state && typeof lockToken === "string" && lockToken &&
-      state.lockToken === lockToken && state.status === "processing" &&
+      state.lockToken === lockToken && ["processing", "posting"].includes(state.status) &&
       Date.parse(state.lockExpiresAt) > Date.now());
   }
 
@@ -106,11 +106,95 @@ export class ArticleRepository {
     return this.storage.transaction(async tx => {
       const state = await tx.get(key);
       if (!this.ownsLock(state, lockToken)) throw new Error("Invalid or expired lock");
+      if (state.status !== "processing" || (status === "no-target" && state.payloadDigest)) throw new Error("Invalid release state");
       const next = { ...state, status, lastError, lockToken: null,
         lockAcquiredAt: null, lockExpiresAt: null,
         updatedAt: new Date().toISOString(), revision: state.revision + 1 };
       await tx.put(key, next);
       return next;
+    });
+  }
+
+  async mutateOwned(input, mutate) {
+    const key = articleKey(input.articleId, input.destination);
+    return this.storage.transaction(async tx => {
+      const state = await tx.get(key);
+      if (!this.ownsLock(state, input.lockToken)) throw new Error("Invalid or expired lock");
+      const next = { ...state, ...mutate(state), revision: state.revision + 1,
+        updatedAt: new Date().toISOString() };
+      await tx.put(key, next);
+      return next;
+    });
+  }
+
+  async startPosting(input) {
+    const { totalPages, payloadDigest } = input;
+    if (!Number.isSafeInteger(totalPages) || totalPages < 1 ||
+        typeof payloadDigest !== "string" || !/^[a-f0-9]{64}$/.test(payloadDigest))
+      throw new Error("Invalid posting plan");
+    return this.mutateOwned(input, state => {
+      if (state.status !== "processing" || state.pendingPost ||
+          (state.payloadDigest && (state.payloadDigest !== payloadDigest || state.totalPages !== totalPages)))
+        throw new Error("Posting plan conflict");
+      return { status: "posting", totalPages, payloadDigest };
+    });
+  }
+
+  async beginPost(input) {
+    const { kind, pages } = input;
+    const operationId = crypto.randomUUID();
+    return this.mutateOwned(input, state => {
+      if (state.status !== "posting" || state.pendingPost) throw new Error("Post already pending or invalid state");
+      if (!Array.isArray(pages) || !(
+        (kind === "overview" && !state.overviewPosted && pages.length === 0) ||
+        (kind === "pages" && state.overviewPosted && pages.length > 0 && pages.length <= 10 &&
+          pages.every((p,i) => p === state.postedPages.length+i+1 && p <= state.totalPages))))
+        throw new Error("Invalid post sequence");
+      return { pendingPost: { operationId, kind, pages: [...pages] } };
+    });
+  }
+
+  async confirmPost(input) {
+    const { operationId, messageId } = input;
+    if (typeof messageId !== "string" || !/^[1-9][0-9]*$/.test(messageId))
+      throw new Error("Invalid message ID");
+    return this.mutateOwned(input, state => {
+      const pending = state.pendingPost;
+      if (state.status !== "posting" || !pending || pending.operationId !== operationId)
+        throw new Error("Invalid pending operation");
+      const sent = state.sentMessages ?? [];
+      if (sent.some(m => m.messageId === messageId)) throw new Error("Duplicate message ID");
+      const postedPages = [...state.postedPages, ...pending.pages];
+      const overviewPosted = state.overviewPosted || pending.kind === "overview";
+      const done = overviewPosted && postedPages.length === state.totalPages;
+      return { pendingPost: null, postedPages, overviewPosted,
+        sentMessages: [...sent, { ...pending, messageId }],
+        ...(done ? { status: "completed", completedAt: new Date().toISOString(),
+          lockToken: null, lockAcquiredAt: null, lockExpiresAt: null } : {}) };
+    });
+  }
+
+  // Internal only. The caller must obtain authoritative GitHub attempt status.
+  // Snapshot revision and attempt prevent recovery of a changed owner.
+  async recoverExpired(input) {
+    const key = articleKey(input.articleId, input.destination);
+    return this.storage.transaction(async tx => {
+      const state = await tx.get(key);
+      if (!state || !state.lockToken || !["processing","posting"].includes(state.status) ||
+          !(Date.parse(state.lockExpiresAt) <= Date.now()))
+        return { recovered: false, reason: "not-expired" };
+      if (state.revision !== input.expectedRevision ||
+          state.workflowRunId !== input.workflowRunId ||
+          state.workflowRunAttempt !== input.workflowRunAttempt)
+        return { recovered: false, reason: "snapshot-changed" };
+      if (input.workflowStatus !== "completed")
+        return { recovered: false, reason: "workflow-not-confirmed-ended" };
+      const status = state.pendingPost ? "uncertain" : "failed";
+      const next = { ...state, status, lockToken: null, lockAcquiredAt: null,
+        lockExpiresAt: null, lastError: "Expired workflow lock: " + status,
+        updatedAt: new Date().toISOString(), revision: state.revision + 1 };
+      await tx.put(key, next);
+      return { recovered: true, status };
     });
   }
 
