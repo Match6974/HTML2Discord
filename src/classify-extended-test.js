@@ -9,8 +9,8 @@ for(const [raw,color] of [
  ['弾のサイズを拡大','green'],['弾のサイズを縮小','red'],['回復量を増加','green'],['回復量を減少','red'],
  ['リロード時間を減少','purple'],['リロード時間を増加','blue'],['ダメージを増加','green']
 ])assert.equal(classifyAdjustment(raw).color,color,raw);
-assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整',{skill:'特殊アクション「おんぶ」'}).hideArrow,true);
-assert.equal(classifyAdjustment('自身が吹っ飛びやすくなるように変更').hideArrow,true);
-assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整').color,null);
+assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整',{name:'緑谷出久',style:'オリジナル',skill:'特殊アクション「おんぶ」'}).hideArrow,true);
+assert.equal(classifyAdjustment('吹っ飛びやすくなるように変更').color,'orange');
+assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整').color,'yellow');
 assert.equal(classifyAdjustment('相手が吹っ飛びにくくなるように調整',{skill:'特殊アクション「おんぶ」'}).color,'yellow');
 console.log('Classification tests passed');
