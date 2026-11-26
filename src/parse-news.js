@@ -50,7 +50,7 @@ function parseIndividualLines(lines) {
       if (bullet && skill && !skill.used) warn(skill.line, 'skill without adjustment');
       if (bullet) skill = null;
       const content = (child || bullet)[1];
-      character.adjustments.push({ line: line.number, skill: skill?.title ?? null, styleScope: styleScope(character,skill?.title), raw: content, ...classifyAdjustment(content,{skill:skill?.title}) });
+      character.adjustments.push({ line: line.number, skill: skill?.title ?? null, styleScope: styleScope(character,skill?.title), raw: content, ...classifyAdjustment(content,{skill:skill?.title,name:character.name,style:character.style}) });
       if (skill) skill.used = true;
       continue;
     }
