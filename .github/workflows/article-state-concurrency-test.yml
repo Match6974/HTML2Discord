@@ -1,0 +1,67 @@
+name: Article state concurrency test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-patchnote-deploy
+  cancel-in-progress: false
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test concurrent requests
+        env:
+          TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {randomBytes} from 'node:crypto';
+          const run=randomBytes(16).toString('hex');
+          const token=process.env.TEST_TOKEN;
+          assert.ok(token?.length>=32);
+          const url='https://mhaur-patchnote-discord.match6974.workers.dev/internal/test/concurrency';
+          async function call(action,n=1,destination='test',attempt=1,auth=true){
+            const r=await fetch(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(30000),
+              headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+token}:{})},
+              body:JSON.stringify({run,action,n,destination,attempt})});
+            if(!auth){assert.equal(r.status,401);return;}
+            assert.equal(r.status,200,action+' HTTP '+r.status);
+            return r.json();
+          }
+          async function race(n,count){
+            assert.equal((await call('register',n)).created,true);
+            const results=await Promise.allSettled(Array.from({length:count},(_,i)=>call('claim',n,'test',i+1)));
+            assert.ok(results.every(r=>r.status==='fulfilled'),'Request failure');
+            const values=results.map(r=>r.value);
+            assert.equal(values.filter(r=>r.acquired===true).length,1);
+            assert.equal(values.filter(r=>r.acquired===false&&r.reason==='locked').length,count-1);
+          }
+          await call('register',1,'test',1,false);
+          try {
+            await race(1,2); console.log('PASS 1: two concurrent claims');
+            await race(2,20); console.log('PASS 2: twenty concurrent claims');
+            await call('register',3); await call('register',4);
+            const independent=await Promise.all([call('claim',3),call('claim',4)]);
+            assert.ok(independent.every(r=>r.acquired===true)); console.log('PASS 3: different articles');
+            await call('register',3,'production');
+            await call('release',3);
+            const destinations=await Promise.all([call('claim',3),call('claim',3,'production')]);
+            assert.ok(destinations.every(r=>r.acquired===true)); console.log('PASS 4: different destinations');
+            assert.equal((await call('wrong-token',1)).passed,true); console.log('PASS 5: wrong token rejected');
+            await call('release',1);
+            assert.equal((await call('claim',1,'test',99)).acquired,true); console.log('PASS 6: reacquire after release');
+            assert.equal((await call('expire',2)).passed,true); console.log('PASS 7: expired lock blocks takeover');
+            assert.equal((await call('uncertain',4)).passed,true); console.log('PASS 8: uncertain blocks retry');
+            await call('register',5); assert.equal((await call('claim',5)).acquired,true);
+            assert.equal((await call('complete',5)).passed,true); console.log('PASS 9: completed blocks retry');
+          } finally {
+            assert.equal((await call('cleanup')).empty,true);
+            console.log('Cleanup passed');
+          }
+          console.log('Concurrency tests passed: 9/9');
+          JS
