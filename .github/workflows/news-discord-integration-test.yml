@@ -52,14 +52,24 @@ jobs:
             timeout 180s npx playwright install-deps chromium
             smoke_test
           fi
+      - name: Restore Japanese font cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/fonts/html2discord
+          key: noto-cjk-ubuntu24.04-v1
       - name: Ensure Japanese fonts
         timeout-minutes: 5
         run: |
-          if dpkg-query -W -f='${Status}' fonts-noto-cjk 2>/dev/null | grep -qx 'install ok installed'; then
-            echo "Japanese fonts already installed"
-          else
-            sudo apt-get install -y fonts-noto-cjk || (sudo apt-get update && sudo apt-get install -y fonts-noto-cjk)
+          font_dir="$HOME/.local/share/fonts/html2discord"
+          if ! test -s "$font_dir/NotoSansCJK-Regular.ttc" || ! test -s "$font_dir/NotoSansCJK-Bold.ttc"; then
+            mkdir -p "$font_dir"
+            tmp="$(mktemp -d)"
+            (cd "$tmp" && (apt-get download fonts-noto-cjk || (sudo apt-get update && apt-get download fonts-noto-cjk)) && dpkg-deb -x fonts-noto-cjk_*.deb extracted)
+            cp "$tmp"/extracted/usr/share/fonts/opentype/noto/NotoSansCJK-{Regular,Bold}.ttc "$font_dir/"
+            rm -rf "$tmp"
           fi
+          fc-cache -f "$font_dir"
+          fc-match 'Noto Sans CJK JP'
       - run: node src/classify-extended-test.js
       - uses: actions/cache/restore@v4
         id: master-cache
