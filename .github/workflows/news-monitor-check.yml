@@ -2,6 +2,14 @@ name: NEWS monitor check
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Monitor test mode
+        type: choice
+        options:
+          - check
+          - repeat-start
+          - repeat-stop
+        default: check
       delivery_article_id:
         description: Optional past article ID for test Discord delivery
         required: false
@@ -14,6 +22,7 @@ jobs:
     steps:
       - name: Check NEWS scan and dispatch
         env:
+          MODE: ${{ inputs.mode }}
           DELIVERY_ARTICLE_ID: ${{ inputs.delivery_article_id }}
           TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
         run: |
@@ -30,6 +39,10 @@ jobs:
             const data=await r.json();
             assert.equal(data.status,'ok');
             return data;
+          }
+          if(process.env.MODE==='repeat-start'||process.env.MODE==='repeat-stop'){
+            console.log(JSON.stringify(await call(process.env.MODE)));
+            process.exit(0);
           }
           const scan=await call('scan');
           assert.ok(scan.articleCount>0);
