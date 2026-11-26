@@ -84,9 +84,15 @@ export class ArticleState extends DurableObject {
     if (path === MONITOR_PATH && request.method === "POST") {
       if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(MONITOR_NAME).toString()) return json({status:"forbidden"},403);
       const {action}=await request.json();
-      const ids=await fetchNews();
+      let ids;
+      try { ids=await fetchNews(); } catch(e) {
+        const message=String(e?.message??"Unknown error");
+        return json({status:"error",stage:"fetch-news",detail:message.slice(0,300)},502);
+      }
       if(action==="dispatch-test"){
-        await dispatchNews(this.env,ids[0]);
+        try { await dispatchNews(this.env,ids[0]); } catch(e) {
+          return json({status:"error",stage:"dispatch",detail:String(e?.message??"Unknown error").slice(0,300)},502);
+        }
         return json({status:"ok",articleId:ids[0],dispatched:true});
       }
       const result=await this.storage.transaction(async tx=>{
