@@ -6,6 +6,10 @@ on:
         description: Official NEWS URL
         required: true
         default: 'https://mhaur.bn-ent.net/news/?p=1573'
+      repeat_test:
+        description: Repeat test delivery (test channel only)
+        type: boolean
+        default: false
       force_master:
         description: Force character master refresh
         type: boolean
@@ -92,6 +96,7 @@ jobs:
       - name: Post NEWS to test Discord
         run: node src/news-discord-integration.js
         env:
+          REPEAT_TEST: ${{ inputs.repeat_test }}
           ARTICLE_STATE_TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
           DISCORD_TEST_WEBHOOK_URL: ${{ secrets.DISCORD_TEST_WEBHOOK_URL }}
       - uses: actions/upload-artifact@v4
