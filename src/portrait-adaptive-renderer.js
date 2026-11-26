@@ -86,11 +86,11 @@ export async function createAdaptiveRenderer(page,article){
    root.append(stack);
    function decorate(header,images,sharedTarget=false){
     if(!images?.length)return;
-    const height=Math.min(64,Math.max(1,header.clientHeight-(sharedTarget?0:12)));
-    const style=header.querySelector('.battle-style');const title=header.querySelector('.skill-title');const canvas=document.createElement('canvas').getContext('2d');const label=style??title;let reserve=0;if(label){const cs=getComputedStyle(label);canvas.font=cs.font;reserve=canvas.measureText(label.textContent).width;}const available=header.clientWidth-22;const budget=Math.min(available*.36,Math.max(images.length*12+4*(images.length-1),available-reserve));const width=Math.max(1,Math.min(height,(budget-4*(images.length-1))/images.length));
+    const height=sharedTarget?64:Math.min(64,Math.max(1,header.clientHeight-12));
+    const style=header.querySelector('.battle-style');const title=header.querySelector('.skill-title');const canvas=document.createElement('canvas').getContext('2d');const label=style??title;let reserve=0;if(label){const cs=getComputedStyle(label);canvas.font=cs.font;reserve=canvas.measureText(label.textContent).width;}const available=header.clientWidth-22;const budget=Math.min(available*.36,Math.max(images.length*12+4*(images.length-1),available-reserve));const width=sharedTarget?64:Math.max(1,Math.min(height,(budget-4*(images.length-1))/images.length));
     const strip=document.createElement('div');strip.className='portrait-strip';
     for(const src of images){const img=decoded.get(src).cloneNode(false);img.style.width=width+'px';img.style.height=Math.min(height,width)+'px';strip.append(img);}
-    if(sharedTarget){const title=header.querySelector('.skill-title');const row=document.createElement('div');row.className='portrait-target';title.before(row);row.append(strip,title);}
+    if(sharedTarget){const title=header.querySelector('.skill-title');const row=document.createElement('div');row.className='portrait-target';row.style.minWidth=(images.length*64+4*(images.length-1)+6+Math.ceil(reserve/2))+'px';title.before(row);row.append(strip,title);}
     else{const copy=document.createElement('div');copy.className='portrait-copy';copy.append(...header.childNodes);header.classList.add('portrait-header');header.append(strip,copy);}
    }
    for(const col of stack.querySelectorAll('.character-column')){
