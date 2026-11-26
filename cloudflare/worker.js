@@ -1,6 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 
+import { ArticleRepository } from "./article-state.js";
+
 export class ArticleState extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.repository = new ArticleRepository(ctx.storage);
+  }
+
   async fetch() {
     return Response.json({ status: "ok", service: "ArticleState" });
   }
