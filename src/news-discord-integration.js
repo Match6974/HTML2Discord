@@ -13,7 +13,10 @@ assert.equal(url.origin,'https://mhaur.bn-ent.net');
 assert.equal(url.pathname,'/news/');
 const articleId=url.searchParams.get('p');assert.match(articleId,/^\d+$/);
 const repeat=process.env.REPEAT_TEST==='true';
-const api=articleClient(articleId);
+const destination=process.env.DELIVERY_DESTINATION||'test';
+assert.ok(['test','production'].includes(destination));
+assert.ok(!repeat||destination==='test');
+const api=articleClient(articleId,destination);
 let lockToken;
 if(!repeat){
 await api('register',{articleUrl:url.href});
@@ -47,10 +50,10 @@ if(result.status==='no-target'){
   title=await page.evaluate(()=>document.querySelector('meta[property="og:title"]')?.content?.trim()||document.querySelector('h1')?.textContent?.trim()||document.title.trim());
  }finally{await browser.close();}
  assert.ok(title,'NEWS title missing');
- const webhook=new URL(process.env.DISCORD_TEST_WEBHOOK_URL??'https://invalid.invalid');
+ const webhook=new URL((destination==='production'?process.env.DISCORD_PRODUCTION_WEBHOOK_URL:process.env.DISCORD_TEST_WEBHOOK_URL)??'https://invalid.invalid');
  assert.ok(webhook.origin==='https://discord.com'&&/^\/api\/webhooks\/\d+\/[\w-]+$/.test(webhook.pathname),'Invalid test webhook');
  webhook.search='?wait=true';
- const payloads=[{message:{content:'【結合テスト】',embeds:[{author:{name:'MY HERO ULTRA RUMBLE'},title:(dates.dates[0]+' バトルスタイル調整').slice(0,256),url:url.href,description:title.slice(0,1000)+'\nバランス調整の内容を画像にまとめました。',color:0x5865F2,fields:[{name:'対象スタイル・キャラクター枠',value:String(data.characters.length),inline:true},{name:'調整項目',value:String(data.characters.reduce((n,c)=>n+c.adjustments.length,0)+(data.shared??[]).reduce((n,g)=>n+(g.kind==='general'?g.adjustments.length:1),0)),inline:true}],footer:{text:'HTML2Discord | 全'+result.total+'ページ'}}]},images:[]}];
+ const payloads=[{message:{content:destination==='production'?'【バトルスタイル調整】':'【結合テスト】',embeds:[{author:{name:'MY HERO ULTRA RUMBLE'},title:(dates.dates[0]+' バトルスタイル調整').slice(0,256),url:url.href,description:title.slice(0,1000)+'\nバランス調整の内容を画像にまとめました。',color:0x5865F2,fields:[{name:'対象スタイル・キャラクター枠',value:String(data.characters.length),inline:true},{name:'調整項目',value:String(data.characters.reduce((n,c)=>n+c.adjustments.length,0)+(data.shared??[]).reduce((n,g)=>n+(g.kind==='general'?g.adjustments.length:1),0)),inline:true}],footer:{text:'HTML2Discord | 全'+result.total+'ページ'}}]},images:[]}];
  let batch=[],bytes=0;
  function flush(){if(!batch.length)return;payloads.push({message:{content:'Page '+batch[0].page+'–'+batch.at(-1).page+' / '+result.total},images:batch,total:result.total});batch=[];bytes=0;}
  for(const image of images){if(batch.length===10||bytes+image.png.length>8*1024*1024)flush();batch.push(image);bytes+=image.png.length;}flush();
