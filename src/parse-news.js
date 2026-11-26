@@ -1,9 +1,10 @@
 import { chromium } from 'playwright';
 import { classifyAdjustment } from './classify-adjustment.js';
+import { isAllStyles } from './match-character-images.js';
 
 const aliases = new Map([['空中格闘','空中格闘攻撃'],['空格','空中格闘攻撃'],['地上格闘','地上格闘攻撃'],['通常格闘','地上格闘攻撃']]);
 const canonical = title => aliases.get(title) ?? title;
-const styleScope = (character, title) => character.style ? 'specified' : /^(?:特殊アクション|空中格闘攻撃|地上格闘攻撃|格闘攻撃)/.test(title ?? '') ? 'all' : 'unknown';
+const styleScope = (character, title) => isAllStyles(character.style) ? 'all' : character.style ? 'specified' : /^(?:特殊アクション|空中格闘攻撃|地上格闘攻撃|格闘攻撃)/.test(title ?? '') ? 'all' : 'unknown';
 function parseIndividualLines(lines) {
   const result = { status: 'no-target', characters: [], unparsed: [], outside: [], lines };
   let target = false, character = null, skill = null, reason = false;
@@ -129,7 +130,7 @@ export function parseLines(lines) {
       group.reason.push(line.text.trim());continue;
     }
     if(group.kind==='general' && /^・/.test(t)){group.adjustments.push({line:line.number,raw:line.text.trim().slice(1)});continue;}
-    if(header && group.kind==='targets'){target={name:header[1],style:header[2]??null,skills:[]};group.targets.push(target);continue;}
+    if(header && group.kind==='targets'){target={name:header[1],style:header[2]??null,styleScope:isAllStyles(header[2])?'all':header[2]?'specified':'unknown',skills:[]};group.targets.push(target);continue;}
     if(group.actionTargets){
       const m=line.text.trim().match(/^・([^「]+)「(.+)」$/);
       if(m){group.targets.push({name:m[1],style:null,styleScope:'all',skills:[m[2]]});continue;}
@@ -137,7 +138,7 @@ export function parseLines(lines) {
     if(group.inlineTargets){
       const m=inlineTarget(t);
       if(m){
-        target={name:m[1],style:m[2],skills:[]};group.targets.push(target);
+        target={name:m[1],style:m[2],styleScope:isAllStyles(m[2])?'all':'specified',skills:[]};group.targets.push(target);
         const original=line.text.trim().replace(/^└\s*/,'').replace(/^.*?[：:]\s*/,'');
         if(m[3]){if(inlineSkill(m[3]))target.skills.push(original);else warnings.push({...line,why:'invalid inline skill'});}
         continue;
