@@ -95,6 +95,7 @@ jobs:
       - name: Post NEWS to test Discord
         run: node src/news-discord-integration.js
         env:
+          ARTICLE_STATE_TEST_TOKEN: ${{ secrets.ARTICLE_STATE_TEST_TOKEN }}
           DISCORD_TEST_WEBHOOK_URL: ${{ secrets.DISCORD_TEST_WEBHOOK_URL }}
       - uses: actions/upload-artifact@v4
         if: always()
