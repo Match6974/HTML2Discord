@@ -21,9 +21,27 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium
-      - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Restore npm download cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-v1-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package.json', 'package-lock.json') }}
+      - name: Install npm packages
+        run: npm install --no-audit --no-fund --prefer-offline
+      - name: Restore Chromium cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-v1-ubuntu24.04-${{ runner.arch }}-${{ hashFiles('package.json', 'package-lock.json') }}
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Ensure Japanese fonts
+        run: |
+          if dpkg-query -W -f='${Status}' fonts-noto-cjk 2>/dev/null | grep -qx 'install ok installed'; then
+            echo "Japanese fonts already installed"
+          else
+            sudo apt-get install -y fonts-noto-cjk || (sudo apt-get update && sudo apt-get install -y fonts-noto-cjk)
+          fi
       - run: node src/classify-extended-test.js
       - uses: actions/cache/restore@v4
         id: master-cache
