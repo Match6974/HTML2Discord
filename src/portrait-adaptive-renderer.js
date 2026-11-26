@@ -18,8 +18,19 @@ export async function createAdaptiveRenderer(page,article){
  document.querySelector('.header').insertBefore(legend,document.querySelector('.page-number'));
  });
  await page.evaluate(()=>document.fonts.ready);
+ // Register immutable article data once, rather than serializing it for every trial.
+ await page.evaluate(async ({templates,shared,portraits,targetPortraits,sharedKeys})=>{
+   const docs=templates.map(html=>new DOMParser().parseFromString(html,'text/html'));
+   const headers=docs.map(doc=>doc.querySelector('.character-header'));
+   const cards=docs.map(doc=>[...doc.querySelectorAll('.skill-card')]);
+   const sources=[...new Set([...portraits.flat(),...targetPortraits.flat(2)])];
+   const decoded=new Map();
+   await Promise.all(sources.map(async src=>{const img=new Image();img.src=src;await img.decode();decoded.set(src,img);}));
+   window.portraitRenderData={headers,cards,shared,portraits,targetPortraits,sharedKeys,decoded};
+ },{templates,shared:article.characters.map(c=>c.sharedKind??null),portraits:article.characters.map(c=>c.portraits??[]),targetPortraits:article.characters.map(c=>c.skills.map(s=>s.portraits??[])),sharedKeys:article.characters.map(c=>c.skills.map(s=>s.groupable??false))});
  async function draw(rows,n=1,total=1,columnCount=0){
-  return page.evaluate(async ({rows,templates,n,total,shared,sharedKeys,columnCount,portraits,targetPortraits})=>{
+  return page.evaluate(async ({rows,n,total,columnCount})=>{
+   const {headers,cards:allCards,shared,sharedKeys,portraits,targetPortraits,decoded}=window.portraitRenderData;
    const root=document.querySelector('.page');
    root.querySelectorAll('.character-header,.skill-card,.reason-card,.rows').forEach(e=>e.remove());
    const stack=document.createElement('div');stack.className='rows';
@@ -28,11 +39,10 @@ export async function createAdaptiveRenderer(page,article){
    const grid=document.createElement('div');grid.className='columns';grid.style.setProperty('--cols',items.length);grid.dataset.cols=items.length;
    if(columnCount){grid.style.setProperty('--cols',1);grid.dataset.cols=columnCount;grid.style.alignContent='start';}
    for(const item of items){
-    const doc=new DOMParser().parseFromString(templates[item.i],'text/html');
     const col=document.createElement('section');col.className='character-column';
-    col.append(document.importNode(doc.querySelector('.character-header'),true));
+    col.append(document.importNode(headers[item.i],true));
     if(item.start>0)col.querySelector('.battle-style').append('（続き）');
-    const cards=[...doc.querySelectorAll('.skill-card')];
+    const cards=allCards[item.i];
     if(shared[item.i]){
     col.classList.add('shared-block');
     const targets=document.createElement('div');targets.className='shared-targets';targets.style.setProperty('--targets',item.targetCols??1);targets.style.setProperty('--target-rows',Math.ceil((item.end-item.start)/(item.targetCols??1)));
@@ -74,7 +84,7 @@ export async function createAdaptiveRenderer(page,article){
     const height=Math.min(64,Math.max(1,header.clientHeight-(sharedTarget?0:12)));
     const style=header.querySelector('.battle-style');const title=header.querySelector('.skill-title');const canvas=document.createElement('canvas').getContext('2d');const label=style??title;let reserve=0;if(label){const cs=getComputedStyle(label);canvas.font=cs.font;reserve=canvas.measureText(label.textContent).width;}const available=header.clientWidth-22;const budget=Math.min(available*.36,Math.max(images.length*12+4*(images.length-1),available-reserve));const width=Math.max(1,Math.min(height,(budget-4*(images.length-1))/images.length));
     const strip=document.createElement('div');strip.className='portrait-strip';
-    for(const src of images){const img=document.createElement('img');img.src=src;img.style.width=width+'px';img.style.height=Math.min(height,width)+'px';strip.append(img);}
+    for(const src of images){const img=decoded.get(src).cloneNode(false);img.style.width=width+'px';img.style.height=Math.min(height,width)+'px';strip.append(img);}
     if(sharedTarget){const title=header.querySelector('.skill-title');const row=document.createElement('div');row.className='portrait-target';title.before(row);row.append(strip,title);}
     else{const copy=document.createElement('div');copy.className='portrait-copy';copy.append(...header.childNodes);header.classList.add('portrait-header');header.append(strip,copy);}
    }
@@ -92,7 +102,7 @@ export async function createAdaptiveRenderer(page,article){
    const cols=[...stack.querySelectorAll('.character-column')], rects=cols.map(e=>e.getBoundingClientRect());
    const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>e.className);
    return {footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
-  },{rows,templates,n,total,columnCount,shared:article.characters.map(c=>c.sharedKind??null),portraits:article.characters.map(c=>c.portraits??[]),targetPortraits:article.characters.map(c=>c.skills.map(s=>s.portraits??[])),sharedKeys:article.characters.map(c=>c.skills.map(s=>s.groupable??false))});
+  },{rows,n,total,columnCount});
  }
 
  return draw;
