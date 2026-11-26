@@ -10,9 +10,6 @@ on:
         description: Force character master refresh
         type: boolean
         default: false
-concurrency:
-  group: discord-test-posts
-  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
