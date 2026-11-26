@@ -131,9 +131,11 @@ try {
   if(article.characters[i].sharedKind){
    for(let end=count(i);end>start;end--){
     for(let cols=1;cols<=Math.min(article.characters[i].sharedKind==='general'?1:MAX_COLUMNS,end-start);cols++){
+     const occupied=Math.ceil((end-start)/Math.ceil((end-start)/cols));
+     if(occupied!==cols)continue;
      const row=[{i,start,end,targetCols:cols}];
      const info=await draw([...rows,row]);
-     if(fits(info))candidates.push({row,complete:end===count(i)?1:0,cards:end-start,gap:info.footerGap});
+     if(fits(info))candidates.push({row,complete:end===count(i)?1:0,cards:end-start,gap:info.footerGap,targetCols:cols});
     }
     if(candidates.length)break;
    }
@@ -149,7 +151,7 @@ try {
     if(fits(await draw([...rows,partial]))){candidates.push({row:partial,complete:width-1,cards:partial.reduce((n,x)=>n+x.end-x.start,0)});break;}
    }
   }
-  candidates.sort((a,b)=>b.complete-a.complete||b.cards-a.cards||a.row.length-b.row.length||(b.gap??0)-(a.gap??0));
+  candidates.sort((a,b)=>b.complete-a.complete||b.cards-a.cards||a.row.length-b.row.length||(a.targetCols??0)-(b.targetCols??0)||(b.gap??0)-(a.gap??0));
   if(candidates.length){
    const row=candidates[0].row;rows.push(row);
    const last=row.at(-1);i=last.i;start=last.end;
