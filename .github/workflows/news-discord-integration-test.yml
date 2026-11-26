@@ -71,6 +71,7 @@ jobs:
           fc-cache -f "$font_dir"
           fc-match 'Noto Sans CJK JP'
       - run: node src/classify-extended-test.js
+      - run: node src/all-style-portrait-test.js
       - uses: actions/cache/restore@v4
         id: master-cache
         with:
