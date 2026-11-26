@@ -11,7 +11,7 @@ export function match(name,style,scope,catalog){
  for(const s of [...candidates].sort((a,b)=>a.styleId.localeCompare(b.styleId,'en',{numeric:true}))){
   if(s.releaseStatus==='upcoming'){if(style)warnings.push('Upcoming style: '+s.styleId);continue;}
   if(!s.ready||s.releaseStatus!=='listed'||!s.imageUrl){warnings.push('Unavailable style: '+s.styleId);continue;}
-  const u=new URL(s.imageUrl);
+  let u;try{u=new URL(s.imageUrl);}catch{warnings.push('Invalid image URL: '+s.styleId);continue;}
   if(u.origin!=='https://jp.ultrarumble.com'||!u.pathname.startsWith('/assets/Character/')){warnings.push('Unexpected image URL: '+s.styleId);continue;}
   images.push({characterId:c.characterId,styleId:s.styleId,nameJa:s.nameJa,url:s.imageUrl});
  }
