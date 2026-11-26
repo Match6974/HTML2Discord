@@ -14,6 +14,61 @@ async function authorized(request, env) {
   return crypto.subtle.timingSafeEqual(a,b);
 }
 
+const CONCURRENCY_PATH = "/internal/test/concurrency";
+const concurrencyName = run => "internal-concurrency-test:"+run;
+const validRun = run => typeof run === "string" && /^[a-f0-9]{32}$/.test(run);
+const validCase = n => Number.isInteger(n) && n >= 1 && n <= 5;
+async function concurrencyTest(repo, storage, body) {
+  const {action, n, destination, attempt} = body;
+  const input = {...fixture(String(910000000+n)),destination};
+  const claim = () => repo.claim({...input,workflowRunId:String(attempt),workflowRunAttempt:1});
+  const check = (condition) => { if (!condition) throw new Error("Test assertion failed"); };
+  if (action === "cleanup") { await storage.deleteAll(); return {empty:(await storage.list()).size===0}; }
+  if (action === "register") { const r=await repo.register(input); return {created:r.created}; }
+  if (action === "claim") { const r=await claim(); return {acquired:r.acquired,reason:r.reason}; }
+  const state=await repo.get(input.articleId,destination);
+  check(state && state.lockToken);
+  const lock={...input,lockToken:state.lockToken};
+  if (action === "wrong-token") {
+    const before=JSON.stringify(state);
+    let rejected=false;
+    try { await repo.renewLock({...lock,lockToken:"invalid"}); }
+    catch(e) { rejected=e.message==="Invalid or expired lock"; }
+    check(rejected && before===JSON.stringify(await repo.get(input.articleId,destination)));
+    return {passed:true};
+  }
+  if (action === "release") {
+    await repo.release({...lock,status:"failed"});
+    return {passed:true};
+  }
+  if (action === "expire" || action === "uncertain") {
+    if(action==="uncertain"){
+      await repo.startPosting({...lock,totalPages:1,payloadDigest:"b".repeat(64)});
+      await repo.beginPost({...lock,kind:"overview",pages:[]});
+    }
+    const s=await repo.get(input.articleId,destination);
+    await storage.put(destination+":"+input.articleId,{...s,lockExpiresAt:new Date(0).toISOString()});
+    check(!(await claim()).acquired && !await repo.validateLock(lock));
+    if(action==="uncertain"){
+      const recovery={...input,expectedRevision:s.revision,workflowRunId:s.workflowRunId,workflowRunAttempt:s.workflowRunAttempt};
+      check(!(await repo.recoverExpired({...recovery,workflowStatus:"in_progress"})).recovered);
+      check((await repo.recoverExpired({...recovery,workflowStatus:"completed"})).status==="uncertain");
+      check(!(await claim()).acquired);
+    }
+    return {passed:true};
+  }
+  if(action==="complete"){
+    await repo.startPosting({...lock,totalPages:1,payloadDigest:"c".repeat(64)});
+    let s=await repo.beginPost({...lock,kind:"overview",pages:[]});
+    await repo.confirmPost({...lock,operationId:s.pendingPost.operationId,messageId:"2001"});
+    s=await repo.beginPost({...lock,kind:"pages",pages:[1]});
+    await repo.confirmPost({...lock,operationId:s.pendingPost.operationId,messageId:"2002"});
+    check((await repo.get(input.articleId,destination)).status==="completed" && !(await claim()).acquired);
+    return {passed:true};
+  }
+  throw new Error("Invalid action");
+}
+
 export class ArticleState extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -23,6 +78,12 @@ export class ArticleState extends DurableObject {
 
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === CONCURRENCY_PATH && request.method === "POST") {
+      const body=await request.json();
+      if (!validRun(body.run) || this.ctx.id.toString() !== this.env.ARTICLE_STATE.idFromName(concurrencyName(body.run)).toString())
+        return json({status:"forbidden"},403);
+      return json(await concurrencyTest(this.repository,this.storage,body));
+    }
     if (path === "/health") return json({status:"ok",service:"ArticleState"});
     if (path !== TEST_PATH || request.method !== "POST") return json({status:"not-found"},404);
     if (this.ctx.id.toString() !== this.env.ARTICLE_STATE.idFromName(TEST_NAME).toString())
@@ -71,6 +132,21 @@ export class ArticleState extends DurableObject {
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === CONCURRENCY_PATH) {
+      if (request.method !== "POST") return json({status:"method-not-allowed"},405);
+      if (!await authorized(request,env)) return json({status:"unauthorized"},401);
+      try {
+        const raw=await request.text();
+        if(raw.length>512) return json({status:"invalid-request"},400);
+        const b=JSON.parse(raw);
+        if(!validRun(b?.run) || !validCase(b.n) || !["test","production"].includes(b.destination) ||
+          !Number.isInteger(b.attempt) || b.attempt<1 || b.attempt>100 ||
+          !["register","claim","wrong-token","release","expire","uncertain","complete","cleanup"].includes(b.action))
+          return json({status:"invalid-request"},400);
+        const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(concurrencyName(b.run)));
+        return await stub.fetch("https://internal"+CONCURRENCY_PATH,{method:"POST",body:JSON.stringify(b)});
+      } catch { return json({status:"test-error"},500); }
+    }
     if (path === TEST_PATH) {
       if (request.method !== "POST") return json({status:"method-not-allowed"},405);
       if (!await authorized(request,env)) return json({status:"unauthorized"},401);
