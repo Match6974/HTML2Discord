@@ -108,13 +108,16 @@ export function parseLines(lines) {
     const inlineTarget=x=>x.match(/^└\s*([^:：]+?)\(([^()]*)\)\s*[:：]\s*(.*)$/);
     const inlineSkill=x=>/^[“”"「『]?個性[“”"」』]?技.*[「『]/.test(x);
     const inlineStart=/^(?:・\s*)?(?:下記|以下)の技について.*(?:変更|調整)(?:しました)?。?$/.test(t) && Boolean(inlineTarget(lines[index+1]?.text.trim().normalize('NFKC')??''));
-    const startTargets=inlineStart || structuralTargets || /^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
+    const namedTargets=/^(?:・\s*)?(?:下記|以下)のキャラクター.*(?:調整|変更)(?:しました)?。?$/.test(t)&&/^[-－]/.test(lines[index+1]?.text.trim()??'');
+    const plainTargets=/^(?:・\s*)?(?:下記|以下)の技.*(?:調整|変更)(?:しました)?。?$/.test(t)&&isHeader(lines[index+1]?.text.trim().normalize('NFKC')??'');
+    const startTargets=namedTargets || plainTargets || inlineStart || structuralTargets || /^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
     const startActions=/^一部の特殊アクションにて.*変更$/.test(t);
     if(startGeneral||startTargets||startActions){
       finish();
       group={kind:startGeneral?'general':'targets',title:startGeneral?'格闘攻撃':line.text.trim().replace(/^・/,''),
         line:line.number,targets:[],adjustments:[],reason:[],sourceLines:[line]};
       if(startActions)group.actionTargets=true;
+      if(namedTargets)group.namedTargets=true;
       if(inlineStart)group.inlineTargets=true;
       continue;
     }
@@ -122,7 +125,7 @@ export function parseLines(lines) {
     if(/^今後とも.*よろしくお願いいたします。?$/.test(t)){finish();active=false;individual.push(line);continue;}
     const header=t.match(/^【(.+?)\(([^()]*)\)】$/) ?? t.match(/^【([^】]+)】$/);
     const next=lines[index+1]?.text.trim()??'';
-    if(header && (reason||group.kind==='general'||group.actionTargets||/^[・●•]/.test(next))){finish();individual.push(line);continue;}
+    if(header && (group.namedTargets||reason||group.kind==='general'||group.actionTargets||/^[・●•]/.test(next))){finish();individual.push(line);continue;}
     group.sourceLines.push(line);
     if(/^[<〈《]?調整意図[>〉》]?$/.test(t)){reason=true;continue;}
     if(reason){
@@ -131,6 +134,11 @@ export function parseLines(lines) {
     }
     if(group.kind==='general' && /^・/.test(t)){group.adjustments.push({line:line.number,raw:line.text.trim().slice(1)});continue;}
     if(header && group.kind==='targets'){target={name:header[1],style:header[2]??null,styleScope:isAllStyles(header[2])?'all':header[2]?'specified':'unknown',skills:[]};group.targets.push(target);continue;}
+    if(group.namedTargets){
+      const m=line.text.trim().match(/^[-－]\s*(.+)$/);
+      if(m){group.targets.push({name:m[1],style:null,styleScope:'all',skills:['地上格闘攻撃']});continue;}
+      if(/^※/.test(t)){group.title+='\n'+line.text.trim();continue;}
+    }
     if(group.actionTargets){
       const m=line.text.trim().match(/^・([^「]+)「(.+)」$/);
       if(m){group.targets.push({name:m[1],style:null,styleScope:'all',skills:[m[2]]});continue;}
