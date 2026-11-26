@@ -1,6 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { ArticleRepository } from "./article-state.js";
 import { fetchNews, dispatchNews } from "./news-monitor.js";
+const STATE_PATH = "/internal/article-state";
+const STATE_NAME = "article-delivery-v1";
+const STATE_ACTIONS = ["register","claim","renewLock","release","startPosting","beginPost","confirmPost","get"];
 const MONITOR_NAME = "news-monitor-preview-v1";
 const MONITOR_PATH = "/internal/monitor";
 
@@ -81,6 +84,17 @@ export class ArticleState extends DurableObject {
 
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if(path===STATE_PATH && request.method==="POST"){
+      if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(STATE_NAME).toString()) return json({status:"forbidden"},403);
+      const {action,input}=await request.json();
+      if(!STATE_ACTIONS.includes(action)||input?.destination!=="test") return json({status:"invalid-action"},400);
+      try {
+        const result=action==="get"?await this.repository.get(input.articleId,input.destination):await this.repository[action](input);
+        if(action==="claim") return json({status:"ok",result});
+        const sanitize=s=>s&&typeof s==="object"?Object.fromEntries(Object.entries(s).filter(([k])=>k!=="lockToken").map(([k,v])=>[k,k==="state"?sanitize(v):v])):s;
+        return json({status:"ok",result:sanitize(result)});
+      } catch(e){return json({status:"error",detail:String(e?.message??"Unknown error").slice(0,200)},409);}
+    }
     if (path === MONITOR_PATH && request.method === "POST") {
       if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(MONITOR_NAME).toString()) return json({status:"forbidden"},403);
       const {action}=await request.json();
@@ -168,6 +182,18 @@ export default {
   },
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if(path===STATE_PATH){
+      if(request.method!=="POST") return json({status:"method-not-allowed"},405);
+      if(!await authorized(request,env)) return json({status:"unauthorized"},401);
+      try {
+        const raw=await request.text();
+        if(raw.length>8192) return json({status:"invalid-request"},400);
+        const {action,input}=JSON.parse(raw);
+        if(!STATE_ACTIONS.includes(action)||input?.destination!=="test") return json({status:"invalid-action"},400);
+        const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(STATE_NAME));
+        return await stub.fetch("https://internal"+STATE_PATH,{method:"POST",body:JSON.stringify({action,input})});
+      }catch{return json({status:"state-error"},500);}
+    }
     if (path === MONITOR_PATH) {
       if(request.method!=="POST") return json({status:"method-not-allowed"},405);
       if(!await authorized(request,env)) return json({status:"unauthorized"},401);
