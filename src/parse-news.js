@@ -104,13 +104,17 @@ export function parseLines(lines) {
       }
     }
     const structuralTargets=targetCount>=2 && /(?:変更|調整|追加|修正)/.test(t);
-    const startTargets=structuralTargets || /^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
+    const inlineTarget=x=>x.match(/^└\s*([^:：]+?)\(([^()]*)\)\s*[:：]\s*(.*)$/);
+    const inlineSkill=x=>/^[“”"「『]?個性[“”"」』]?技.*[「『]/.test(x);
+    const inlineStart=/^(?:・\s*)?(?:下記|以下)の技について.*(?:変更|調整)(?:しました)?。?$/.test(t) && Boolean(inlineTarget(lines[index+1]?.text.trim().normalize('NFKC')??''));
+    const startTargets=inlineStart || structuralTargets || /^(?:・\s*)?(?:下記|以下)の.*個性.*技.*(?:調整|変更)(?:しました)?。?$/.test(t);
     const startActions=/^一部の特殊アクションにて.*変更$/.test(t);
     if(startGeneral||startTargets||startActions){
       finish();
       group={kind:startGeneral?'general':'targets',title:startGeneral?'格闘攻撃':line.text.trim().replace(/^・/,''),
         line:line.number,targets:[],adjustments:[],reason:[],sourceLines:[line]};
       if(startActions)group.actionTargets=true;
+      if(inlineStart)group.inlineTargets=true;
       continue;
     }
     if(!group){individual.push(line);continue;}
@@ -129,6 +133,17 @@ export function parseLines(lines) {
     if(group.actionTargets){
       const m=line.text.trim().match(/^・([^「]+)「(.+)」$/);
       if(m){group.targets.push({name:m[1],style:null,styleScope:'all',skills:[m[2]]});continue;}
+    }
+    if(group.inlineTargets){
+      const m=inlineTarget(t);
+      if(m){
+        target={name:m[1],style:m[2],skills:[]};group.targets.push(target);
+        const original=line.text.trim().replace(/^└\s*/,'').replace(/^.*?[：:]\s*/,'');
+        if(m[3]){if(inlineSkill(m[3]))target.skills.push(original);else warnings.push({...line,why:'invalid inline skill'});}
+        continue;
+      }
+      if(target && !target.skills.length && /^[\s　]/.test(line.text) && inlineSkill(t)){target.skills.push(line.text.trim());continue;}
+      warnings.push({...line,why:'unknown inline shared target'});continue;
     }
     if(target && /^└/.test(t)){target.skills.push(line.text.trim().replace(/^└\s*/,''));continue;}
     warnings.push({...line,why:'unknown shared adjustment format'});
