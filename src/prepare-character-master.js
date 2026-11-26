@@ -1,13 +1,13 @@
 import {readFile,writeFile,mkdir,rm,rename,copyFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {fetchNews} from './fetch-news.js';
-import {parseNews} from './parse-news.js';
 import {structureAdjustments} from './structure-adjustments.js';
 import {match} from './match-character-images.js';
 import {loadMaster} from './portrait-image-loader.js';
 import {pathToFileURL} from 'node:url';
 export async function prepareMaster({cache='output/master-cache',dir='output/character-master',now=Date.now,force=process.env.FORCE_MASTER==='true',getTargets=async()=>{
  const {html}=await fetchNews(process.env.NEWS_URL);
+ const {parseNews}=await import('./parse-news.js');
  const parsed=await parseNews(html);
  if(parsed.status!=='ok')return [];
  const data=structureAdjustments(parsed);
