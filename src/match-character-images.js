@@ -1,6 +1,8 @@
 const norm=s=>String(s??'').normalize('NFKC').trim();
 const normCharacter=s=>norm(s).replace(/[・･\s]/gu,'');
+export const isAllStyles = style => /^(?:全バトルスタイル|全スタイル)(?:共通)?$/.test(norm(style));
 export function match(name,style,scope,catalog){
+ if(isAllStyles(style)){style=null;scope='all';}
  const chars=catalog.filter(c=>normCharacter(c.nameJa)===normCharacter(name));
  if(chars.length!==1)return {images:[],warnings:['Character missing or ambiguous']};
  const c=chars[0];
