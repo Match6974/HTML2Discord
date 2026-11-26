@@ -14,12 +14,12 @@ export async function fetchNews() {
   if(!ids.size) throw new Error("No NEWS article links found");
   return [...ids];
 }
-export async function dispatchNews(env,id,delivery=false,repeat=false) {
+export async function dispatchNews(env,id,delivery=false,repeat=false,destination='test') {
   if(!env.GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN");
   const response=await fetch("https://api.github.com/repos/Match6974/HTML2Discord/actions/workflows/"+(delivery?"news-discord-integration-test.yml":"news-monitor-dispatch.yml")+"/dispatches",{
     method:"POST",redirect:"manual",signal:AbortSignal.timeout(20000),
     headers:{Authorization:"Bearer "+env.GITHUB_TOKEN,Accept:"application/vnd.github+json","User-Agent":"HTML2Discord","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"},
-    body:JSON.stringify({ref:"main",inputs:{news_url:NEWS+"?p="+id,...(repeat?{repeat_test:"true"}:{})}})
+    body:JSON.stringify({ref:"main",inputs:{news_url:NEWS+"?p="+id,...(delivery?{destination}:{}),...(repeat?{repeat_test:"true"}:{})}})
   });
   if(!response.ok) throw new Error("GitHub dispatch HTTP "+response.status);
 }
