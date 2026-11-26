@@ -5,10 +5,15 @@ import { ArticleRepository } from "./article-state.js";
 // In-memory adapter: unit tests only, not a Cloudflare persistence test.
 function setup() {
   const map = new Map();
+  let tail = Promise.resolve();
   const storage = {
     get: async key => structuredClone(map.get(key)),
     put: async (key, value) => { map.set(key, structuredClone(value)); },
-    transaction: async fn => fn(storage)
+    transaction: fn => {
+      const result = tail.then(() => fn(storage));
+      tail = result.catch(() => {});
+      return result;
+    }
   };
   return new ArticleRepository(storage);
 }
@@ -35,17 +40,55 @@ test("reject invalid identity and URL", async () => {
     await assert.rejects(repo.register({...article,...patch}));
   }
 });
+const owner = {...article, workflowRunId:"100", workflowRunAttempt:1};
 test("revision and transition validation", async () => {
   const repo = setup();
   await repo.register(article);
   const change = (expectedRevision,status) => repo.transition({...article,expectedRevision,status});
   await assert.rejects(change(0,"completed"),/Invalid transition/);
-  assert.equal((await change(0,"queued")).revision,1);
-  await assert.rejects(change(0,"processing"),/Revision conflict/);
-  await change(1,"processing");
-  await assert.rejects(change(2,"posting"),/not enabled/);
-  await change(2,"failed");
-  await change(3,"processing");
-  await change(4,"no-target");
-  await assert.rejects(change(5,"pending"),/Invalid transition/);
+  await assert.rejects(change(0,"processing"),/not enabled/);
+  assert.equal((await change(0,"failed")).revision,1);
+  await assert.rejects(change(0,"pending"),/Revision conflict/);
+  await change(1,"pending");
+});
+test("claim, ownership, renewal and release", async () => {
+  const repo = setup();
+  await repo.register(article);
+  const claim = await repo.claim(owner);
+  assert.equal(claim.acquired,true);
+  const lock = {...article,lockToken:claim.lockToken};
+  assert.equal(await repo.validateLock(lock),true);
+  assert.equal(await repo.validateLock({...lock,lockToken:"wrong"}),false);
+  await assert.rejects(repo.release({...lock,lockToken:"wrong",status:"failed"}),/Invalid or expired/);
+  await assert.rejects(repo.renewLock({...lock,lockToken:"wrong"}),/Invalid or expired/);
+  await assert.rejects(repo.transition({...article,expectedRevision:1,status:"failed"}),/not enabled/);
+  assert.equal((await repo.renewLock(lock)).revision,2);
+  await assert.rejects(repo.release({...lock,status:"completed"}),/Invalid release/);
+  await repo.release({...lock,status:"failed",lastError:"parse error"});
+  assert.equal(await repo.validateLock(lock),false);
+  const retry = await repo.claim({...owner,workflowRunAttempt:2});
+  assert.equal(retry.acquired,true);
+  assert.notEqual(retry.lockToken,claim.lockToken);
+  assert.equal((await repo.get("1589","test")).retryCount,1);
+  await repo.release({...article,lockToken:retry.lockToken,status:"no-target"});
+  assert.equal((await repo.claim(owner)).acquired,false);
+});
+test("simultaneous claims through serialized mock transaction", async () => {
+  const repo = setup();
+  await repo.register(article);
+  const results = await Promise.all([repo.claim(owner),repo.claim({...owner,workflowRunId:"101"})]);
+  assert.equal(results.filter(x=>x.acquired).length,1);
+  assert.equal(results.find(x=>!x.acquired).reason,"locked");
+});
+test("independent article and destination, baseline blocked", async () => {
+  const repo = setup();
+  const other = {...article,articleId:"1590",articleUrl:"https://mhaur.bn-ent.net/news/?p=1590"};
+  await repo.register(article);
+  await repo.register(other);
+  await repo.register({...article,destination:"production"});
+  await repo.register({...other,destination:"production",baseline:true});
+  for(const input of [owner,{...owner,...other},{...owner,destination:"production"}])
+    assert.equal((await repo.claim(input)).acquired,true);
+  assert.equal((await repo.claim({...owner,...other,destination:"production"})).reason,"baseline");
+  await assert.rejects(repo.claim({...owner,workflowRunAttempt:0}),/Invalid workflow identity/);
 });
