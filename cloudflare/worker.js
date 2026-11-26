@@ -95,13 +95,15 @@ export class ArticleState extends DurableObject {
         }
         return json({status:"ok",articleId:ids[0],dispatched:true});
       }
-      const result=await this.storage.transaction(async tx=>{
+      let result;
+      try { result=await this.storage.transaction(async tx=>{
         const seen=await tx.get("seen");
         const known=new Set(seen??[]);
         const fresh=seen?ids.filter(id=>!known.has(id)):[];
         await tx.put("seen",[...new Set([...known,...ids])]);
         return {baseline:!seen,detected:fresh,articleCount:ids.length};
       });
+      } catch(e) { return json({status:"error",stage:"storage",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
       console.log("NEWS preview",JSON.stringify(result));
       return json({status:"ok",...result});
     }
@@ -176,7 +178,7 @@ export default {
         if(!["scan","dispatch-test"].includes(action)) return json({status:"invalid-action"},400);
         const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
         return await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action})});
-      } catch { return json({status:"monitor-error"},500); }
+      } catch(e) { return json({status:"monitor-error",stage:"worker-to-object",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
     }
     if (path === CONCURRENCY_PATH) {
       if (request.method !== "POST") return json({status:"method-not-allowed"},405);
