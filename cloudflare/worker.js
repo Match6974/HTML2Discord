@@ -113,12 +113,21 @@ export class ArticleState extends DurableObject {
       try { result=await this.storage.transaction(async tx=>{
         const seen=await tx.get("seen");
         const known=new Set(seen??[]);
-        const fresh=seen?ids.filter(id=>!known.has(id)):[];
+        const enabled=this.env.AUTO_TEST_DELIVERY==="true";
+        const active=await tx.get("delivery-enabled");
+        const fresh=enabled&&active&&seen?ids.filter(id=>!known.has(id)):[];
+        await tx.put("delivery-enabled",enabled);
         await tx.put("seen",[...new Set([...known,...ids])]);
         return {baseline:!seen,detected:fresh,articleCount:ids.length};
       });
       } catch(e) { return json({status:"error",stage:"storage",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
-      console.log("NEWS preview",JSON.stringify(result));
+      const failures=[];
+      for(const id of result.detected){
+        try { await dispatchNews(this.env,id,true); }
+        catch(e){ failures.push(id); console.error("NEWS dispatch failed",id,String(e?.message??"error")); }
+      }
+      console.log("NEWS preview",JSON.stringify({...result,failures}));
+      if(failures.length)return json({status:"error",stage:"dispatch",failedIds:failures},502);
       return json({status:"ok",...result});
     }
     if (path === CONCURRENCY_PATH && request.method === "POST") {
