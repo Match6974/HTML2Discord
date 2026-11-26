@@ -29,9 +29,11 @@ try {
 const noTarget=result.status==='no-target';
  const total=noTarget?0:result.total;
  const images=[];
+ let data;
  if(!noTarget){
  assert.equal(result.status,'ok');assert.ok(Number.isInteger(result.total)&&result.total>0);
- const data=await read('data.json'),dates=await read('date-candidates.json'),layout=await read('layout-results.json');
+ data=await read('data.json');
+ const dates=await read('date-candidates.json'),layout=await read('layout-results.json');
  assert.equal(data.status,'ok');assert.equal(dates.dates.length,1);assert.equal(layout.length,result.total);
  assert.equal(result.fallbackPages,0);
  const ids=layout.flatMap(x=>x.ids);assert.equal(ids.length,result.cards);assert.equal(new Set(ids).size,ids.length);
@@ -42,17 +44,39 @@ const noTarget=result.status==='no-target';
   images.push({page,name,png});
  }
  }
- const browser=await chromium.launch();let title;
+ const browser=await chromium.launch();let title,publishedDate;
  try{
   const page=await browser.newPage({javaScriptEnabled:false});await page.route('**/*',r=>r.abort());
   await page.setContent(await readFile(dir+'/source.html','utf8'),{waitUntil:'domcontentloaded'});
-  title=await page.evaluate(()=>document.querySelector('article > h2:not(.sr-only)')?.textContent.trim()||'');
+  ({title,publishedDate}=await page.evaluate(()=>{
+   const heading=document.querySelector('article > h2:not(.sr-only)');
+   const article=heading?.closest('article');
+   const pattern=/^\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}$/;
+   const candidates=[...(article?.querySelectorAll('*')??[])].filter(e=>!e.closest('.articleInner')&&pattern.test(e.textContent.trim()));
+   const date=candidates.find(e=>e.compareDocumentPosition(heading)&Node.DOCUMENT_POSITION_FOLLOWING)||candidates[0];
+   return {title:heading?.textContent.trim()||'',publishedDate:date?.textContent.trim()||''};
+  }));
  }finally{await browser.close();}
  assert.ok(title,'NEWS title missing');
+ assert.ok(publishedDate,'NEWS publication date missing');
  const webhook=new URL((destination==='production'?process.env.DISCORD_PRODUCTION_WEBHOOK_URL:process.env.DISCORD_TEST_WEBHOOK_URL)??'https://invalid.invalid');
  assert.ok(webhook.origin==='https://discord.com'&&/^\/api\/webhooks\/\d+\/[\w-]+$/.test(webhook.pathname),'Invalid test webhook');
  webhook.search='?wait=true';
- const payloads=[{message:{embeds:[{title:title.slice(0,256),url:url.href,description:'公式サイトに新しいNEWSが掲載されました！',color:0x5865F2}]},images:[]}];
+ const embed={
+  author:{name:'MY HERO ULTRA RUMBLE\n'+publishedDate},
+  title:title.slice(0,256),url:url.href,color:0x5865F2,
+  description:'公式サイトに新しいNEWSが掲載されました！\nNEWS|僕のヒーローアカデミア ULTRA RUMBLE | バンダイナムコエンターテインメント公式サイト'
+ };
+ if(!noTarget){
+  embed.description+='\nバランス調整の内容を画像にまとめました。';
+  embed.fields=[
+   {name:'対象スタイル・キャラクター枠',value:String(data.characters.length),inline:true},
+   {name:'調整項目',value:String(data.characters.reduce((n,c)=>n+c.adjustments.length,0)+(data.shared??[]).reduce((n,g)=>n+(g.kind==='general'?g.adjustments.length:1),0)),inline:true},
+   {name:'\u200b',value:'※調整意図はリンク先の公式サイトを確認して下さい',inline:false}
+  ];
+  embed.footer={text:'全'+total+'ページ'};
+ }
+ const payloads=[{message:{embeds:[embed]},images:[]}];
  let batch=[],bytes=0;
  function flush(){if(!batch.length)return;payloads.push({message:{content:'Page '+batch[0].page+'–'+batch.at(-1).page+' / '+total},images:batch,total:total});batch=[];bytes=0;}
  for(const image of images){if(batch.length===10||bytes+image.png.length>8*1024*1024)flush();batch.push(image);bytes+=image.png.length;}flush();
