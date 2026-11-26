@@ -1,0 +1,25 @@
+name: Discord embed post test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: discord-test-posts
+  cancel-in-progress: false
+jobs:
+  post-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - name: Install Chromium
+        timeout-minutes: 5
+        run: npx playwright install chromium
+      - name: Test embed and continuation posts
+        env:
+          DISCORD_TEST_WEBHOOK_URL: ${{ secrets.DISCORD_TEST_WEBHOOK_URL }}
+        run: node src/discord-embed-post-test.js
