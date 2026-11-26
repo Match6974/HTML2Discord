@@ -26,4 +26,17 @@ for(const [raw,effect,color] of [
 ]){
  const result=classifyAdjustment(raw);assert.equal(result.effect,effect,raw);assert.equal(result.color,color,raw);
 }
+for(const [raw,color] of [
+ ['前隙と後隙を減少','purple'],['前隙と後隙を増加','blue'],
+ ['前隙を減少し後隙を増加',null],
+ ['先行入力に対応し、他の技の後に長押しがすぐ出せるように調整','green'],
+ ['先行入力を受け付ける','green'],['先行入力を受け付けない','red'],
+ ['先行入力に対応しない','red'],['先行入力を廃止','red'],
+ ['長押し時に相手がふっとびにくくなるように変更','yellow'],
+ ['ふっとびやすくなる','orange'],['吹っ飛びにくくなる','yellow'],
+ ['ヒット間隔を短縮','purple'],['ヒット間隔を増加','blue'],
+ ['ヒット間隔を減少','purple'],['ヒット間隔を延長','blue'],
+ ['ヒット間隔を短くする','purple'],['ヒット間隔を長くする','blue']
+])assert.equal(classifyAdjustment(raw).color,color,raw);
+assert.equal(classifyAdjustment('ふっとびにくくなる',{name:'緑谷出久',style:'オリジナル',skill:'おんぶ'}).hideArrow,true);
 console.log('Classification tests passed');
