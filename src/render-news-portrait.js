@@ -85,6 +85,7 @@ try {
  async function planPages(){
  const plans=[];let rows=[],i=0,start=0;
  const count=i=>article.characters[i].skills.length;
+ const boundary=(i,end)=>{const s=article.characters[i].skills;return end===s.length||!s[end]?.groupable||s[end].title!==s[end-1]?.title;};
  while(i<article.characters.length){
   assert.ok(count(i)>0);
   // Fill each column top-to-bottom, preserving contiguous source order.
@@ -99,10 +100,11 @@ try {
       if(fits(await draw([...columns,[...items,item]],1,1,width))){
        items.push(item);next++;offset=0;continue;
       }
-      if(!items.length){
+      {
        for(let end=item.end-1;end>offset;end--){
+        if(!boundary(next,end))continue;
         const partial={...item,end};
-        if(fits(await draw([...columns,[partial]],1,1,width))){items.push(partial);offset=end;break;}
+        if(fits(await draw([...columns,[...items,partial]],1,1,width))){items.push(partial);offset=end;break;}
        }
       }
       break;
@@ -112,8 +114,10 @@ try {
     }
     if(!columns.length)continue;
     const splits=columns.flat().filter(x=>x.end<count(x.i)).length;
-    const candidate={rows:columns,columnCount:width,next,offset,splits};
-    if(!best||next>best.next||(next===best.next&&(offset>best.offset||(offset===best.offset&&splits<best.splits))))best=candidate;
+    let actualWidth=width;
+    if(columns.length<width&&fits(await draw(columns,1,1,columns.length)))actualWidth=columns.length;
+    const candidate={rows:columns,columnCount:actualWidth,next,offset,splits,unused:actualWidth-columns.length};
+    if(!best||next>best.next||(next===best.next&&(offset>best.offset||(offset===best.offset&&(candidate.unused<best.unused||(candidate.unused===best.unused&&(splits<best.splits||(splits===best.splits&&candidate.columnCount<best.columnCount))))))))best=candidate;
    }
    if(best){plans.push({rows:best.rows,columnCount:best.columnCount});i=best.next;start=best.offset;continue;}
   }
@@ -135,6 +139,7 @@ try {
    // Allow only the last block in a row to be split, preserving reading order.
    const last=row.at(-1);
    for(let end=last.end-1;end>last.start;end--){
+    if(!boundary(last.i,end))continue;
     const partial=[...row.slice(0,-1),{...last,end}];
     if(fits(await draw([...rows,partial]))){candidates.push({row:partial,complete:width-1,cards:partial.reduce((n,x)=>n+x.end-x.start,0)});break;}
    }
@@ -175,6 +180,18 @@ try {
   if(!merged)k++;
  }
  mark('mergePages');
+ // Reflow unused tracks and enlarge text without changing the page count or icon size.
+ for(const plan of plans){
+  if(plan.fallback)continue;
+  if(plan.columnCount&&plan.rows.length<plan.columnCount){
+   if(fits(await draw(plan.rows,1,1,plan.rows.length)))plan.columnCount=plan.rows.length;
+  }
+  plan.fontScale=1;
+  for(const scale of [1.1,1.2,1.3,1.4,1.5]){
+   if(!fits(await draw(plan.rows,1,1,plan.columnCount??0,scale)))break;
+   plan.fontScale=scale;
+  }
+ }
  const report=[],ids=[];let segments=0;
  for(let k=0;k<plans.length;k++){
   const plan=plans[k];let info;
@@ -195,7 +212,7 @@ try {
     const png=await fallback.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);
    }finally{await fallback.close();}
   }else{
-   info=await draw(plan.rows,k+1,plans.length,plan.columnCount??0);assert.ok(fits(info),JSON.stringify(info));
+   info=await draw(plan.rows,k+1,plans.length,plan.columnCount??0,plan.fontScale??1);assert.ok(fits(info),JSON.stringify(info));
    const screenshotStart=performance.now();
    const png=await page.screenshot({path:dir+'/page-'+String(k+1).padStart(2,'0')+'.png'});assert.equal(png.readUInt32BE(16),1920);assert.equal(png.readUInt32BE(20),1080);screenshotMs+=performance.now()-screenshotStart;
   }
