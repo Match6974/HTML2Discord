@@ -52,7 +52,7 @@ const noTarget=result.status==='no-target';
  const webhook=new URL((destination==='production'?process.env.DISCORD_PRODUCTION_WEBHOOK_URL:process.env.DISCORD_TEST_WEBHOOK_URL)??'https://invalid.invalid');
  assert.ok(webhook.origin==='https://discord.com'&&/^\/api\/webhooks\/\d+\/[\w-]+$/.test(webhook.pathname),'Invalid test webhook');
  webhook.search='?wait=true';
- const payloads=[{message:{embeds:[{title:title.slice(0,256),url:url.href,color:0x5865F2}]},images:[]}];
+ const payloads=[{message:{embeds:[{title:title.slice(0,256),url:url.href,description:'公式サイトに新しいNEWSが掲載されました！',color:0x5865F2}]},images:[]}];
  let batch=[],bytes=0;
  function flush(){if(!batch.length)return;payloads.push({message:{content:'Page '+batch[0].page+'–'+batch.at(-1).page+' / '+total},images:batch,total:total});batch=[];bytes=0;}
  for(const image of images){if(batch.length===10||bytes+image.png.length>8*1024*1024)flush();batch.push(image);bytes+=image.png.length;}flush();
