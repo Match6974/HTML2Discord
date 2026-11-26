@@ -6,6 +6,10 @@ on:
         description: Official NEWS URL
         required: true
         default: 'https://mhaur.bn-ent.net/news/?p=1552'
+      force_master:
+        description: Force character master refresh
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -21,8 +25,23 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - run: node src/classify-extended-test.js
-      - run: node src/build-character-master-test.js
-        continue-on-error: true
+      - uses: actions/cache/restore@v4
+        id: master-cache
+        with:
+          path: output/master-cache
+          key: character-master-v1-${{ hashFiles('data/style-name-mapping.json', 'src/build-character-master-test.js') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            character-master-v1-${{ hashFiles('data/style-name-mapping.json', 'src/build-character-master-test.js') }}-
+            character-master-v1-
+      - run: node src/prepare-character-master.js
+        env:
+          NEWS_URL: ${{ inputs.news_url }}
+          FORCE_MASTER: ${{ inputs.force_master }}
+      - uses: actions/cache/save@v4
+        if: hashFiles('output/master-cache/master.json') != ''
+        with:
+          path: output/master-cache
+          key: ${{ steps.master-cache.outputs.cache-primary-key }}
       - run: node src/render-news-portrait.js
         env:
           NEWS_URL: ${{ inputs.news_url }}
