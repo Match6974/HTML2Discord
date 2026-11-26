@@ -151,7 +151,7 @@ try {
     if(fits(await draw([...rows,partial]))){candidates.push({row:partial,complete:width-1,cards:partial.reduce((n,x)=>n+x.end-x.start,0)});break;}
    }
   }
-  candidates.sort((a,b)=>b.complete-a.complete||b.cards-a.cards||a.row.length-b.row.length||(a.targetCols??0)-(b.targetCols??0)||(b.gap??0)-(a.gap??0));
+  candidates.sort((a,b)=>b.complete-a.complete||b.cards-a.cards||a.row.length-b.row.length||(b.gap??0)-(a.gap??0)||(a.targetCols??0)-(b.targetCols??0));
   if(candidates.length){
    const row=candidates[0].row;rows.push(row);
    const last=row.at(-1);i=last.i;start=last.end;
@@ -187,6 +187,24 @@ try {
   let merged=false;
   for(const rows of candidates){if(fits(await draw(rows))){plans.splice(k,2,{rows});merged=true;break;}}
   if(!merged)k++;
+ }
+ // Repack adjacent shared-only pages before enlarging fonts.
+ for(let k=0;k+1<plans.length;){
+  const a=plans[k],b=plans[k+1];
+  if(a.fallback||b.fallback||a.columnCount||b.columnCount||![...a.rows,...b.rows].flat().every(x=>article.characters[x.i].sharedKind)){k++;continue;}
+  const items=[...a.rows,...b.rows].flat();
+  let best=null;
+  async function search(index,rows){
+   if(index===items.length){const info=await draw(rows);if(fits(info)&&(!best||info.footerGap>best.gap))best={rows,gap:info.footerGap};return;}
+   const item=items[index],n=item.end-item.start;
+   for(let cols=1;cols<=Math.min(article.characters[item.i].sharedKind==='general'?1:MAX_COLUMNS,n);cols++){
+    if(Math.ceil(n/Math.ceil(n/cols))!==cols)continue;
+    const next=[...rows,[{...item,targetCols:cols}]];
+    if(fits(await draw(next)))await search(index+1,next);
+   }
+  }
+  await search(0,[]);
+  if(best)plans.splice(k,2,{rows:best.rows});else k++;
  }
  mark('mergePages');
  // Reflow unused tracks and enlarge text without changing the page count or icon size.
