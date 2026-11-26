@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Test article state
+        run: node --test article-state.test.js
       - name: Validate Worker
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
       - name: Deploy Worker
