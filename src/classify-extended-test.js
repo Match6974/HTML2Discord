@@ -13,4 +13,17 @@ assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整',{na
 assert.equal(classifyAdjustment('吹っ飛びやすくなるように変更').color,'orange');
 assert.equal(classifyAdjustment('吹っ飛びにくくなるように調整').color,'yellow');
 assert.equal(classifyAdjustment('相手が吹っ飛びにくくなるように調整',{skill:'特殊アクション「おんぶ」'}).color,'yellow');
+for(const [raw,effect,color] of [
+ ['射程を増加','buff','green'],['射程を減少','nerf','red'],
+ ['落下速度を上昇','buff','green'],['落下速度を低下','nerf','red'],
+ ['技の追従を強化','buff','green'],['技の追従を弱体化','nerf','red'],
+ ['連射速度を上昇','buff','green'],['連射速度を低下','nerf','red'],
+ ['攻撃範囲を増加','buff','green'],['攻撃範囲を減少','nerf','red'],
+ ['アーマーを付与','buff','green'],['スーパーアーマーを付与するように変更','buff','green'],
+ ['アーマーを付与しないようにする','nerf','red'],['スーパーアーマーを付与しないように変更','nerf','red'],
+ ['スーパーアーマーが付与されないように変更','nerf','red'],
+ ['射程を調整','unknown',null],['追従を強化または弱体化','unknown',null]
+]){
+ const result=classifyAdjustment(raw);assert.equal(result.effect,effect,raw);assert.equal(result.color,color,raw);
+}
 console.log('Classification tests passed');
