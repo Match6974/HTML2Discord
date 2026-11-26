@@ -103,6 +103,18 @@ export class ArticleState extends DurableObject {
         await dispatchNews(this.env,articleId,true);
         return json({status:"ok",articleId,dispatched:true});
       }
+      if(action==="repeat-start"||action==="repeat-stop"){
+        if(action==="repeat-start"&&!/^[1-9][0-9]*$/.test(articleId??""))return json({status:"invalid-id"},400);
+        await this.storage.put("repeat-test",action==="repeat-start"?{articleId,expires:Date.now()+30*60*1000}:null);
+        return json({status:"ok",repeat:await this.storage.get("repeat-test")});
+      }
+      if(action==="scan"&&request.headers.get("X-Scheduled")==="true"){
+        const repeat=await this.storage.get("repeat-test");
+        if(repeat&&repeat.expires>Date.now()){
+          await dispatchNews(this.env,repeat.articleId,true,true);
+          return json({status:"ok",repeat:true,articleId:repeat.articleId});
+        }
+      }
       let ids;
       try { ids=await fetchNews(); } catch(e) {
         const message=String(e?.message??"Unknown error");
@@ -190,7 +202,7 @@ export default {
   async scheduled(controller,env,ctx) {
     const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
     ctx.waitUntil((async()=>{
-      const response=await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action:"scan"})});
+      const response=await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",headers:{"X-Scheduled":"true"},body:JSON.stringify({action:"scan"})});
       if(!response.ok) throw new Error("NEWS scan failed: "+response.status);
     })());
   },
@@ -215,7 +227,7 @@ export default {
         const raw=await request.text();
         if(raw.length>128) return json({status:"invalid-request"},400);
         const {action,articleId}=JSON.parse(raw);
-        if(!["scan","dispatch-test","delivery-test"].includes(action)) return json({status:"invalid-action"},400);
+        if(!["scan","dispatch-test","delivery-test","repeat-start","repeat-stop"].includes(action)) return json({status:"invalid-action"},400);
         const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(MONITOR_NAME));
         return await stub.fetch("https://internal"+MONITOR_PATH,{method:"POST",body:JSON.stringify({action,articleId})});
       } catch(e) { return json({status:"monitor-error",stage:"worker-to-object",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
