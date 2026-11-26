@@ -50,8 +50,72 @@ export class ArticleRepository {
     return (await this.storage.get(articleKey(articleId, destination))) ?? null;
   }
 
-  // Preliminary internal transition primitive; ownership and delivery
-  // invariants must be enforced before wiring this to workflow callers.
+  // Lease expiry never permits automatic takeover.
+  async claim({ articleId, destination, workflowRunId, workflowRunAttempt }) {
+    const key = articleKey(articleId, destination);
+    if (typeof workflowRunId !== "string" || !/^[1-9][0-9]*$/.test(workflowRunId) ||
+        !Number.isSafeInteger(workflowRunAttempt) || workflowRunAttempt < 1) {
+      throw new Error("Invalid workflow identity");
+    }
+    const token = crypto.randomUUID();
+    return this.storage.transaction(async tx => {
+      const state = await tx.get(key);
+      if (!state) throw new Error("Article not registered");
+      if (state.lockToken || !["pending", "failed"].includes(state.status)) {
+        return { acquired: false, reason: state.lockToken ? "locked" : state.status };
+      }
+      const now = Date.now();
+      const next = { ...state, status: "processing", workflowRunId, workflowRunAttempt,
+        lockToken: token, lockAcquiredAt: new Date(now).toISOString(),
+        lockExpiresAt: new Date(now + 30 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now).toISOString(), revision: state.revision + 1,
+        retryCount: state.retryCount + (state.status === "failed" ? 1 : 0) };
+      await tx.put(key, next);
+      return { acquired: true, lockToken: token, revision: next.revision };
+    });
+  }
+
+  ownsLock(state, lockToken) {
+    return Boolean(state && typeof lockToken === "string" && lockToken &&
+      state.lockToken === lockToken && state.status === "processing" &&
+      Date.parse(state.lockExpiresAt) > Date.now());
+  }
+
+  async validateLock({ articleId, destination, lockToken }) {
+    return this.ownsLock(await this.get(articleId, destination), lockToken);
+  }
+
+  async renewLock({ articleId, destination, lockToken }) {
+    const key = articleKey(articleId, destination);
+    return this.storage.transaction(async tx => {
+      const state = await tx.get(key);
+      if (!this.ownsLock(state, lockToken)) throw new Error("Invalid or expired lock");
+      const now = Date.now();
+      const next = { ...state, lockExpiresAt: new Date(now + 30 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now).toISOString(), revision: state.revision + 1 };
+      await tx.put(key, next);
+      return { revision: next.revision, lockExpiresAt: next.lockExpiresAt };
+    });
+  }
+
+  async release({ articleId, destination, lockToken, status, lastError = null }) {
+    const key = articleKey(articleId, destination);
+    if (!["failed", "no-target"].includes(status)) throw new Error("Invalid release status");
+    if (lastError !== null && (typeof lastError !== "string" || lastError.length > 2000))
+      throw new Error("Invalid error");
+    return this.storage.transaction(async tx => {
+      const state = await tx.get(key);
+      if (!this.ownsLock(state, lockToken)) throw new Error("Invalid or expired lock");
+      const next = { ...state, status, lastError, lockToken: null,
+        lockAcquiredAt: null, lockExpiresAt: null,
+        updatedAt: new Date().toISOString(), revision: state.revision + 1 };
+      await tx.put(key, next);
+      return next;
+    });
+  }
+
+  // Only pre-claim transitions are allowed here. Processing is entered
+  // exclusively via claim and exited via release. Dispatch is not wired yet.
   async transition({ articleId, destination, expectedRevision, status }) {
     const key = articleKey(articleId, destination);
     return this.storage.transaction(async tx => {
@@ -59,9 +123,8 @@ export class ArticleRepository {
       if (!state) throw new Error("Article not registered");
       if (state.revision !== expectedRevision) throw new Error("Revision conflict");
       if (!transitions[state.status]?.includes(status)) throw new Error("Invalid transition");
-      // Posting and recovery transitions require the next implementation stage.
-      if (["posting", "completed", "uncertain"].includes(status) ||
-          state.status === "posting") throw new Error("Delivery transition not enabled");
+      if (state.lockToken || !["pending", "failed"].includes(state.status) ||
+          !["pending", "failed"].includes(status)) throw new Error("Transition not enabled");
       const next = { ...state, status, revision: state.revision + 1,
         updatedAt: new Date().toISOString() };
       await tx.put(key, next);
