@@ -104,8 +104,8 @@ export async function createAdaptiveRenderer(page,article){
    document.querySelector('.page-number').textContent=number;document.querySelector('.footer-page').textContent=number;
    const footer=document.querySelector('footer').getBoundingClientRect();
    const cols=[...stack.querySelectorAll('.character-column')], rects=cols.map(e=>e.getBoundingClientRect());
-   const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>e.className);
-   return {footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
+   const overflow=[...stack.querySelectorAll('*')].filter(e=>e.clientWidth>0&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)).map(e=>({className:String(e.className),width:e.clientWidth,scrollWidth:e.scrollWidth,height:e.clientHeight,scrollHeight:e.scrollHeight,text:e.textContent.slice(0,80)}));
+   return {requestedColumns:columnCount,occupiedColumns:rows.length, fontScale,stackWidth:stack.getBoundingClientRect().width,cardWidths:rects.map(r=>Math.round(r.width)),footerGap:footer.top-Math.max(...rects.map(r=>r.bottom)),right:Math.max(...rects.map(r=>r.right)),overflow,ids:[...stack.querySelectorAll('.skill-card')].map(e=>e.dataset.cardId),segments:stack.querySelectorAll('.segment').length};
   },{rows,n,total,columnCount,fontScale});
  }
 
