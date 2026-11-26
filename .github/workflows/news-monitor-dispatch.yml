@@ -1,0 +1,19 @@
+name: NEWS monitor dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      news_url:
+        description: Official NEWS URL
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify dispatch without posting
+        env:
+          NEWS_URL: ${{ inputs.news_url }}
+        run: |
+          node -e 'const u=new URL(process.env.NEWS_URL); if(u.origin!=="https://mhaur.bn-ent.net" || u.pathname!=="/news/" || !/^[1-9][0-9]*$/.test(u.searchParams.get("p")||"")) throw Error("Invalid URL"); console.log("NEWS dispatch received:",u.href)'
