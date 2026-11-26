@@ -129,7 +129,7 @@ export class ArticleRepository {
 
   async startPosting(input) {
     const { totalPages, payloadDigest } = input;
-    if (!Number.isSafeInteger(totalPages) || totalPages < 1 ||
+    if (!Number.isSafeInteger(totalPages) || totalPages < 0 ||
         typeof payloadDigest !== "string" || !/^[a-f0-9]{64}$/.test(payloadDigest))
       throw new Error("Invalid posting plan");
     return this.mutateOwned(input, state => {
