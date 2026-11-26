@@ -87,7 +87,7 @@ export class ArticleState extends DurableObject {
     if(path===STATE_PATH && request.method==="POST"){
       if(this.ctx.id.toString()!==this.env.ARTICLE_STATE.idFromName(STATE_NAME).toString()) return json({status:"forbidden"},403);
       const {action,input}=await request.json();
-      if(!STATE_ACTIONS.includes(action)||input?.destination!=="test") return json({status:"invalid-action"},400);
+      if(!STATE_ACTIONS.includes(action)||(!["test","production"].includes(input?.destination)||(input.destination==="production"&&this.env.AUTO_PRODUCTION_DELIVERY!=="true"))) return json({status:"invalid-action"},400);
       try {
         const result=action==="get"?await this.repository.get(input.articleId,input.destination):await this.repository[action](input);
         if(action==="claim") return json({status:"ok",result});
@@ -110,7 +110,7 @@ export class ArticleState extends DurableObject {
       }
       if(action==="scan"&&request.headers.get("X-Scheduled")==="true"){
         const repeat=await this.storage.get("repeat-test");
-        if(repeat&&repeat.expires>Date.now()){
+        if(this.env.AUTO_PRODUCTION_DELIVERY!=="true"&&repeat&&repeat.expires>Date.now()){
           await dispatchNews(this.env,repeat.articleId,true,true);
           return json({status:"ok",repeat:true,articleId:repeat.articleId});
         }
@@ -130,17 +130,18 @@ export class ArticleState extends DurableObject {
       try { result=await this.storage.transaction(async tx=>{
         const seen=await tx.get("seen");
         const known=new Set(seen??[]);
-        const enabled=this.env.AUTO_TEST_DELIVERY==="true";
+        const destination=this.env.AUTO_PRODUCTION_DELIVERY==="true"?"production":this.env.AUTO_TEST_DELIVERY==="true"?"test":null;
+        const enabled=Boolean(destination);
         const active=await tx.get("delivery-enabled");
-        const fresh=enabled&&active&&seen?ids.filter(id=>!known.has(id)):[];
-        await tx.put("delivery-enabled",enabled);
+        const fresh=enabled&&active===destination&&seen?ids.filter(id=>!known.has(id)):[];
+        await tx.put("delivery-enabled",destination);
         await tx.put("seen",[...new Set([...known,...ids])]);
-        return {baseline:!seen,detected:fresh,articleCount:ids.length};
+        return {baseline:!seen,detected:fresh,articleCount:ids.length,destination};
       });
       } catch(e) { return json({status:"error",stage:"storage",detail:String(e?.message??"Unknown error").slice(0,300)},500); }
       const failures=[];
       for(const id of result.detected){
-        try { await dispatchNews(this.env,id,true); }
+        try { await dispatchNews(this.env,id,true,false,result.destination); }
         catch(e){ failures.push(id); console.error("NEWS dispatch failed",id,String(e?.message??"error")); }
       }
       console.log("NEWS preview",JSON.stringify({...result,failures}));
@@ -215,7 +216,7 @@ export default {
         const raw=await request.text();
         if(raw.length>8192) return json({status:"invalid-request"},400);
         const {action,input}=JSON.parse(raw);
-        if(!STATE_ACTIONS.includes(action)||input?.destination!=="test") return json({status:"invalid-action"},400);
+        if(!STATE_ACTIONS.includes(action)||(!["test","production"].includes(input?.destination)||(input.destination==="production"&&this.env.AUTO_PRODUCTION_DELIVERY!=="true"))) return json({status:"invalid-action"},400);
         const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(STATE_NAME));
         return await stub.fetch("https://internal"+STATE_PATH,{method:"POST",body:JSON.stringify({action,input})});
       }catch{return json({status:"state-error"},500);}
