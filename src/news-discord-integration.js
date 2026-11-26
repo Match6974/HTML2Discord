@@ -12,15 +12,19 @@ const url=new URL(result.url);
 assert.equal(url.origin,'https://mhaur.bn-ent.net');
 assert.equal(url.pathname,'/news/');
 const articleId=url.searchParams.get('p');assert.match(articleId,/^\d+$/);
+const repeat=process.env.REPEAT_TEST==='true';
 const api=articleClient(articleId);
+let lockToken;
+if(!repeat){
 await api('register',{articleUrl:url.href});
 const claim=await api('claim',{workflowRunId:process.env.GITHUB_RUN_ID,workflowRunAttempt:Number(process.env.GITHUB_RUN_ATTEMPT)});
 if(!claim.acquired){console.log('Article skipped:',claim.reason);process.exit(0);}
-const lockToken=claim.lockToken;
+lockToken=claim.lockToken;
+}
 let posting=false;
 try {
 if(result.status==='no-target'){
- await api('release',{lockToken,status:'no-target'});
+ if(!repeat)await api('release',{lockToken,status:'no-target'});
  await writeFile(out+'/integration-result.json',JSON.stringify({status:'skipped',reason:'no-target',articleId},null,2));
  console.log('No balance adjustments: Discord posting skipped');
 }else{
@@ -50,6 +54,11 @@ if(result.status==='no-target'){
  let batch=[],bytes=0;
  function flush(){if(!batch.length)return;payloads.push({message:{content:'Page '+batch[0].page+'–'+batch.at(-1).page+' / '+result.total},images:batch,total:result.total});batch=[];bytes=0;}
  for(const image of images){if(batch.length===10||bytes+image.png.length>8*1024*1024)flush();batch.push(image);bytes+=image.png.length;}flush();
+ if(repeat){
+  for(const payload of payloads)await sendDiscord(webhook.href,payload);
+  console.log('Repeat test Discord delivery completed');
+  await writeFile(out+'/integration-result.json',JSON.stringify({articleId,status:'completed',pages:result.total,repeat:true},null,2));
+ }else{
  const hash=createHash('sha256');
  for(const payload of payloads){
   hash.update(JSON.stringify(payload.message));
@@ -72,8 +81,9 @@ if(result.status==='no-target'){
  assert.equal(state.status,'completed');
  await writeFile(out+'/integration-result.json',JSON.stringify({articleId,status:'completed',pages:result.total},null,2));
  console.log('Durable Discord delivery completed');
+ }
 }
 }catch(e){
- if(!posting)await api('release',{lockToken,status:'failed',lastError:'Preparation failed'}).catch(()=>{});
+ if(!repeat&&!posting)await api('release',{lockToken,status:'failed',lastError:'Preparation failed'}).catch(()=>{});
  throw e;
 }
