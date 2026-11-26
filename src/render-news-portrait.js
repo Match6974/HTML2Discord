@@ -6,7 +6,7 @@ import {fetchNews} from './fetch-news.js';
 import {parseNews} from './parse-news.js';
 import {structureAdjustments} from './structure-adjustments.js';
 import {buildPatchNoteHtml} from './patch-note-html.js';
-import {match} from './match-character-images.js';
+import {loadMaster,createImageLoader} from './portrait-image-loader.js';
 const dir='output/news-portrait';
 await mkdir(dir,{recursive:true});
 let browser;
