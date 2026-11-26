@@ -55,27 +55,18 @@ try {
  // Preserve source order across shared and individual groups.
  const order=[...(data.shared??[]).map(g=>g.line),...data.characters.map(c=>c.line)];
  article.characters=article.characters.map((c,i)=>({c,line:order[i]})).sort((a,b)=>a.line-b.line).map(x=>x.c);
- const master=JSON.parse(await readFile('output/character-master/master.json','utf8'));
- const cache=new Map(),warnings=[];
- async function images(name,style,scope){
-  const result=match(name,style,scope,master);
-  warnings.push(...result.warnings.map(w=>({name,style,warning:w})));
-  const out=[];
-  for(const item of result.images){
-   if(!cache.has(item.url)){
-    try{const response=await fetch(item.url,{redirect:'error',signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error('HTTP '+response.status);const b=Buffer.from(await response.arrayBuffer());if(b.length<24||b.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw Error('Invalid PNG');cache.set(item.url,'data:image/png;base64,'+b.toString('base64'));}
-    catch(e){warnings.push({url:item.url,warning:String(e)});cache.set(item.url,null);}
-   }
-   if(cache.get(item.url))out.push(cache.get(item.url));
-  }
-  return out;
- }
+ const masterWarnings=[];
+ const master=await loadMaster(['output/character-master/master.json','data/character-master.json'],masterWarnings);
+ const validator=await browser.newPage();
+ const {images,cache,warnings}=createImageLoader(master,{validate:src=>validator.evaluate(async src=>{const img=new Image();img.src=src;await img.decode();},src)});
+ warnings.push(...masterWarnings);
  for(const c of article.characters){
   if(c.sharedKind){if(c.sharedKind==='general')continue;const g=data.shared.find(g=>g.title===c.style);for(let j=0;j<c.skills.length;j++){const t=g.targets[j];c.skills[j].portraits=await images(t.name,t.style,t.styleScope);}}
   else{const original=data.characters.find(x=>x.name===c.name&&x.line===c.line);c.portraits=await images(c.name,original.style,original.adjustments.every(a=>a.styleScope==='all')?'all':'unknown');}
  }
  await writeFile(dir+'/image-results.json',JSON.stringify({downloaded:[...cache].filter(x=>x[1]).map(x=>x[0]),warnings},null,2));
- assert.ok([...cache.values()].some(Boolean),'No images downloaded');
+ await validator.close();
+ for(const warning of warnings)console.warn('Portrait warning:',JSON.stringify(warning));
  const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
  const draw=await createAdaptiveRenderer(page,article);
  // A row contains consecutive character blocks. Prefer whole characters,
