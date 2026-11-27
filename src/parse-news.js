@@ -56,7 +56,7 @@ function parseIndividualLines(lines) {
       continue;
     }
     const previous=character.adjustments.at(-1);
-    if (/^\(.+\)$/.test(t) && /^[\s　]/.test(line.text) && previous && (previous.noteLines?.at(-1) ?? previous.line)===line.number-1) {
+    if ((/^\(.+\)$/.test(t) || /^※\s*\S/.test(t)) && /^[\s　]/.test(line.text) && previous && (previous.noteLines?.at(-1) ?? previous.line)===line.number-1) {
       previous.noteLines=[...(previous.noteLines??[]),line.number];
       previous.notes=[...(previous.notes??[]),raw];
       previous.raw+='\n'+raw;
