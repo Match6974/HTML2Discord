@@ -216,7 +216,7 @@ export default {
         const raw=await request.text();
         if(raw.length>8192) return json({status:"invalid-request"},400);
         const {action,input}=JSON.parse(raw);
-        if(!STATE_ACTIONS.includes(action)||(!["test","production"].includes(input?.destination)||(input.destination==="production"&&this.env.AUTO_PRODUCTION_DELIVERY!=="true"))) return json({status:"invalid-action"},400);
+        if(!STATE_ACTIONS.includes(action)||(!["test","production"].includes(input?.destination)||(input.destination==="production"&&env.AUTO_PRODUCTION_DELIVERY!=="true"))) return json({status:"invalid-action"},400);
         const stub=env.ARTICLE_STATE.get(env.ARTICLE_STATE.idFromName(STATE_NAME));
         return await stub.fetch("https://internal"+STATE_PATH,{method:"POST",body:JSON.stringify({action,input})});
       }catch{return json({status:"state-error"},500);}
